@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>区间估计</title>
+	</head>
+<body>
+<h1>区间估计</h1>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({tex2jax: {inlineMath:[['$','$']]}});
+</script>
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<blockquote>
+<p>由于<strong>点估计量</strong>不能提供关于估计值与总体参数接近程度的信息，统计学家更倾向于使用<strong>区间估计</strong>，它能够提供有关估计精度的信息。</p>
+</blockquote>
+
+<p>通过把<strong>点估计值</strong>减去和加上一个被称为<strong>边际误差</strong>的值，可以构建出总体参数的一个<strong>区间估计</strong>。</p>
+
+<hr />
+
+<h3>总体均值的区间估计：大样本情况</h3>
+
+<h5>抽样误差</h5>
+
+<p>一般地，一个无偏点估计量与总体参数之差的绝对值，被称为<strong>抽样误差</strong>。</p>
+
+<p>在实践中，由于总体均值$\mu$未知而无法准确地确定抽样误差的值。但是利用$\overline{x}$的抽样分布，能够对抽样误差进行概率描述。</p>
+
+<p>对于样本容量和总体标准差已知的抽样分布，根据<strong>中心极限定理</strong>通过计算样本标准差得到的正态概率分布来近似样本均值的抽样分布。抽样分布描述了样本均值如何围绕总体均值分布，因此它提供了样本均值和总体均值之间的差值信息，这个信息是对抽样误差进行概率描述的基础。$Z_{\dfrac{\alpha}{2}}\sigma_{\overline{x}}$表示抽样误差的上限，被称为<strong>边际误差</strong>。</p>
+
+<h5>假定$\sigma$已知的大样本情况</h5>
+
+<p>在所有可能的样本均值中有95%的样本均值能够构造出一个包含总体均值在内的区间，所以该区间是建立在95%<strong>置信水平</strong>上的。值0.95被称为<strong>置信系数</strong>，区间估计$\overline{x} \pm 1.96\sigma_{\overline{x}} $被称为95%<strong>置信区间</strong>。</p>
+
+<p>总体均值的区间估计：假定$\sigma$已知的大样本情况：</p>
+
+$$ \overline{x} \pm Z_{\dfrac{\alpha}{2}} \dfrac{\sigma}{\sqrt{n}} $$
+$$ 1-\alpha 是置信系数，Z_{\dfrac{\alpha}{2}}是当标准正态概率分布的上侧面积为\dfrac{\alpha}{2}时的Z值 $$
+<h5>用s估计$\sigma$的大样本情况</h5>
+
+<blockquote>
+<p>在许多实际应用中缺乏假定总体标准差为已知的基础，只能使用样本标准差s来估计$\sigma$。</p>
+</blockquote>
+
+<p>在大样本$(n \geq 30)$情况下，当样本容量增大时，样本标准差s对$\sigma$做出了良好的估计这一事实，以及中心极限定理的应用，都是的我们能够利用以下方法来建立总体均值的区间估计。</p>
+
+$$ \overline{x} \pm Z_{\dfrac{\alpha}{2}} \dfrac{s}{\sqrt{n}} $$
+$$ s为样本标准差，1-\alpha 是置信系数，Z_{\dfrac{\alpha}{2}}是当标准正态概率分布的上侧面积为\dfrac{\alpha}{2}时的Z值 $$
+<hr />
+
+<h3>总体均值的区间估计：小样本情况</h3>
+
+<blockquote>
+<p>上文介绍的区间估计方法建立在<strong>大样本理论</strong>和<strong>中心极限定理</strong>的基础上。这种情况下，无论总体的概率分布如何，都可以用正态概率分布来近似$\overline{x}$的抽样分布。因此，大样本方法不需要任何关于总体分布的假设。</p>
+</blockquote>
+
+<p>小样本情况下$\overline{x}$的抽样分布依赖于总体的分布形式。<strong>下文介绍的区间估计方法是基于总体具有正态分布的假设而提出的。</strong>如果该假设符合实际情况，则能够使用下文的方法来计算总体均值的区间估计。如果假设不符合实际，建议把样本容量增加到30以上，改为大样本。</p>
+
+<h5>假定$\sigma$已知的小样本情况</h5>
+
+<p>假设总体具有正态分布，并且假定总体标准差</p>
+
+<p>$\sigma$已知，这时$\overline{x}$的抽样分布对于任意的样本容量都是正态分布，其均值为$\mu$，标准差$\sigma_{\overline{x}} = \dfrac{\sigma}{\sqrt{n}}$。</p>
+
+<p>总体均值的区间估计：假定$\sigma$已知的小样本情况(n &lt; 30)：</p>
+
+$$ \overline{x} \pm Z_{\dfrac{\alpha}{2}} \dfrac{\sigma}{\sqrt{n}} $$
+$$ 1-\alpha 是置信系数，Z_{\dfrac{\alpha}{2}}是当标准正态概率分布的上侧面积为\dfrac{\alpha}{2}时的Z值 $$
+<h5>用s估计$\sigma$的小样本情况</h5>
+
+<p>假定总体具有正态分布，但是没有任何根据假定总体标准差$\sigma$已知，就要用样本标准差s来估计$\sigma$。这时的区间估计方法要依靠一种被称为<strong>t分布</strong>的概率分布。</p>
+
+<p><strong>t分布</strong>是一系列类似的概率分布，一个特定的分布依赖于一个被称为<strong>自由度</strong>的参数。</p>
+
+<p>对于每一个自由度，有且只有一个t分布与之对应。</p>
+
+<p>随着自由度的增大，t分布与正态概率分布之间的差别变得越来越小。t分布的自由度越大，它的变异程度越小，也越接近于标准正态概率分布。（实际上，标准正态分布的Z值可以在t分布表中自由度为无穷的那一行查到）</p>
+
+<p>t分布的均值为0。</p>
+
+<p>总体均值的区间估计：用s估计$\sigma$的小样本情况(n &lt; 30)：</p>
+
+$$ \overline{x} \pm t_{\dfrac{\alpha}{2}} \dfrac{s}{\sqrt{n}} $$
+$$ s为样本标准差，1-\alpha 是置信系数，t_{\dfrac{\alpha}{2}}是与自由度为n-1的t分布的上侧面积\dfrac{\alpha}{2}相对应的t值 $$
+<p>与t值相联系的自由度是n-1，这是由于不得不采用样本标准差s来估计总体标准差$\sigma$的缘故。</p>
+
+<p>样本标准差表达式为：</p>
+
+$$ s = \sqrt{ \dfrac{\sum (x_i - \overline{x})^2}{n - 1} } $$
+<p>自由度是计算$\sum (x_i - \overline{x})^2$时所使用的独立信息个数。在计算$\sum (x_i - \overline{x})^2$时，涉及到的n个信息如下：$x_1-\overline{x}, x_2-\overline{x}, x_n-\overline{x}$。因为$\sum (x_i - \overline{x}) = 0$，所以只有n-1个$x_i - \overline{x}$值是独立的，也就是说，知道了n-1个值，利用$x_i - \overline{x}$值的总和必定等于0这一条件，就能够准确地确定剩下的那个值。因此，n-1是与$\sum (x_i - \overline{x})$相联系的自由度，也就是t分布的自由度。</p>
+
+<hr />
+
+<h3>总结</h3>
+
+<figure><img src="/Users/xerxes/note/statistics/src/%E5%8C%BA%E9%97%B4%E4%BC%B0%E8%AE%A1%E6%96%B9%E6%B3%95%E6%80%BB%E7%BB%93.jpg"/></figure>
+
+<hr />
+
+<h3>确定样本容量</h3>
+
+<p>从上文总体均值的区间估计公式：</p>
+
+$$ \overline{x} \pm Z_{\dfrac{\alpha}{2}}\dfrac{\sigma}{\sqrt{n}} $$
+<p>来看，$Z_{\dfrac{\alpha}{2}}$、总体标准差$\sigma$和样本容量n共同确定了边际误差$Z_{\dfrac{\alpha}{2}}\dfrac{\sigma}{\sqrt{n}}$。一旦我们选择了置信系数$(1 - \alpha)$，就能确定$Z_{\dfrac{\alpha}{2}}$。然后，如果知道$\sigma$的值，就能够确定任意边际误差所需的样本容量n：</p>
+
+$$ n = \dfrac{(Z_{\dfrac{\alpha}{2}})^2 \sigma^2}{E^2} $$
+E代表所希望的边际误差
+<p>如果在抽样之前就选择了所希望的边际误差，就可以用这个公式确定<strong>能够满足边际误差要求的样本容量</strong>。</p>
+
+<h5>总体标准差$\sigma$的计划值</h5>
+
+<p>在确定样本容量之前必须先确定总体标准差$\sigma$的计划值，可选择的方法有三种：</p>
+
+<ol>
+	<li>使用以前由相同或类似元素构成的样本，用它的样本标准差代替$\sigma$的值；</li>
+	<li>使用小规模试验研究选择一个初步样本，把来自初步样本的样本标准差作为$\sigma$的计划值使用；</li>
+	<li>利用判断或者“最佳猜测”确定$\sigma$值（例如估计总体的最大和最小数据值，把差值作为极差的估计值，把极差除以4作为标准差的粗略估计，也就是$\sigma$的一个可接受的计划值）</li>
+</ol>
+
+<hr />
+
+<h3>总体比例的区间估计</h3>
+
+<p>样本比例$\overline{p}$是总体比例p的无偏估计量，并且大样本情况下（np和n(1-p)都大于等于5），$\overline{p}$的抽样分布可以用正态概率分布来近似。</p>
+
+<p>当我们使用样本比例$\overline{p}$估计总体比例p时，可以利用$\overline{p}$的抽样分布对抽样误差进行概率描述。这时，抽样误差就定义为$\overline{p}$和p之差的绝对值，记作$|\overline{p} - p|$。</p>
+
+<p>当样本容量较大时，对抽样误差可做如下的精度描述：</p>
+
+<p>样本比例带来的抽样误差$\leq Z_{\dfrac{\alpha}{2}} \sigma_{\overline{p}}$的概率为$1 - \alpha$。知道了边际误差$Z_{\dfrac{\alpha}{2}}\sigma_{\overline{p}}$，用$\overline{p}$加减边际误差，就能够得到<strong>总体比例的区间估计</strong>：</p>
+
+$$ \overline{p} \pm Z_{\dfrac{\alpha}{2}}\sigma_{\overline{p}} $$
+<p>$1 - \alpha$是置信系数；由于$\sigma_{\overline{p}} = \sqrt{\dfrac{p(1-p)}{n}}$，所以公式也可以写作：</p>
+
+$$ \overline{p} \pm Z_{\dfrac{\alpha}{2}} \sqrt{\dfrac{p(1-p)}{n}} $$
+<p>当使用公式建立总体比例p的区间估计时，需要知道p的值，但由于p的值还需要我们估计，所以用样本比例$\overline{p}$来代替p。</p>
+
+<h5>确定样本容量</h5>
+
+<p>与总体比例的估计值相联系的边际误差是$Z_{\dfrac{\alpha}{2}} \sigma_{\overline{p}}$，由于$\sigma_{\overline{p}} = \sqrt{\dfrac{p(1-p)}{n}}$，可知边际误差由$Z{\dfrac{\alpha}{2}}$的值、总体比例p和样本容量n共同决定。当置信系数$1 - \alpha$一定时，也就确定了$Z_{\dfrac{\alpha}{2}}$的值。然后，对于总体比例p的某特定值，边际误差就由样本容量n最后确定。<strong>样本容量越大，边际误差就越小，精度也就越好。</strong></p>
+
+<p>令E代表所希望的边际误差：</p>
+
+$$ E = Z{\dfrac{\alpha}{2}} \sqrt{\dfrac{p(1-p)}{n}} $$
+<p>总体比例区间估计的样本容量：</p>
+
+$$ n = \dfrac{(Z_{\dfrac{\alpha}{2}})^2 p(1-p)}{E^2} $$
+<p>使用公式时，使用者已经规定了希望的边际误差E，在大多数情况下，E=0.1或更小。</p>
+
+<p>使用者还规定了置信水平，于是也就确定了对应的$Z{\dfrac{\alpha}{2}} $。</p>
+
+<p>最后，由于总体比例p是未知的，需要确定p的计划值，可选方法有：</p>
+
+<ol>
+	<li>使用来自以前样本的样本比例，该样本要由与当前样本相同或类似的元素构成；</li>
+	<li>使用小规模试验研究来选择初步样本，来自该样本的样本比例可以用作p的计划值；</li>
+	<li>猜一个</li>
+	<li>如果以上三种方法都不适用，则以p=0.50作为计划值</li>
+</ol>
+
+</body>
+</html>
+

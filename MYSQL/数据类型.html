@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>数据类型</title>
+	</head>
+<body>
+<h1>数据类型</h1>
+
+<hr />
+
+<h3>选择合适的数据类型</h3>
+
+<ol>
+	<li>更⼩的通常更好</li>
+	<li>简单就数据类型就好</li>
+	<li>尽量避免null</li>
+</ol>
+
+<hr />
+
+<h3>整数类型</h3>
+
+<ol>
+	<li>整数
+
+		<ol>
+			<li>Tinyint（ 8位）</li>
+			<li>Smallint（ 16位）</li>
+			<li>Mediumint（ 24位）</li>
+			<li>Int（ 32位）</li>
+			<li>Bigint（ 64位）</li>
+		</ol></li>
+	<li>实数
+
+		<ol>
+			<li>Decimal（ 8个字节）
+
+				<p>⽤于存储精确的⼩数</p>
+
+				<p>可存储⽐bigint还⼤的整数</p></li>
+			<li>Float（ 4个字节）
+
+				<p>⽀持使⽤标准的浮点运算进⾏近似计算</p></li>
+			<li>Double
+
+				<p>⽀持使⽤标准的浮点运算进⾏近似计算</p></li>
+		</ol></li>
+</ol>
+
+<hr />
+
+<h3>字符串类型</h3>
+
+<blockquote>
+<p>char、varchar括号中的数字代表字符的个数，而不是字节的个数。</p>
+</blockquote>
+
+<ol>
+	<li>varchar（变⻓字符串）
+
+		<p>varchar类型用于存储可变长字符串，是最常见的字符串数据类型。</p>
+
+		<p>比定长类型更节省空间，因为它仅使用必要的空间。</p>
+
+		<p>需要使用（列的最大长度&lt;=255字节?1:2）个额外字节记录字符串的长度。</p>
+
+		<p>由于行是变长的，在update时可能使行变得比原来更长。</p></li>
+	<li>char（定⻓字符串）
+
+		<p>总是根据定义的字符串长度分配足够的空间。</p>
+
+		<p>char会截断字符串尾部空格。</p>
+
+		<p>char适合存储很短的字符串，或者所有值都接近同一长度。</p></li>
+</ol>
+
+<p>更⻓的列会消耗更多的内存，最好的策略是指分配真正需要的空间。</p>
+
+<hr />
+
+<h3>BLOB和TEXT类型</h3>
+
+<ol>
+	<li>TEXT:字符类型
+
+		<p>TINYTEXT,SMALLTEXT,TEXT,MEDIUMTEXT,LONGTEXT</p>
+
+		<p>有排序规则或字符集</p></li>
+	<li>BLOB:⼆进制类型
+
+		<p>TINYBLOB,SMALLBLOB,BLOB,MEDIUMBLOB,LONGBLOB</p>
+
+		<p>没有排序规则或字符集</p></li>
+</ol>
+
+<p>mysql把每个blob和text值当作⼀个独⽴的对象处理。当blob和text值太⼤时， innodb会使⽤专⻔的“外部”存储区域来进⾏存储，此时每个值在⾏内需要1-4个字节存储指向外部存储区域的指针。</p>
+
+<p>只对每个列的最前max<em>sort</em>length字节⽽不是整个字符串做排序。</p>
+
+<hr />
+
+<h3>使⽤枚举代替字符串类型 </h3>
+
+<ol>
+	<li>不能将全部⻓度的字符串进⾏索引。</li>
+	<li>枚举列可以把⼀些不重复的字符串存储成⼀个预定义的集合。</li>
+	<li>mysql在存储枚举时⾮常紧凑，会根据列表值的数量压缩到⼀个或两个字节中。</li>
+</ol>
+
+<hr />
+
+<h3>⽇期和时间类型</h3>
+
+<ol>
+	<li>datetime
+
+		<p>能保存⼤范围的值，格式为YYYYMMDDHHMMSS，与市区无关。使⽤8个字节的存储空间。</p></li>
+	<li>timestamp
+
+		<p>unix时间戳。使⽤4个字节的存储空间。</p></li>
+</ol>
+
+<hr />
+
+<h3>位数据类型</h3>
+
+<ol>
+	<li>BIT
+
+		<p>可以使用BIT在一列中存储一个或多个true/false值。BIT()中的值代表存多少位，最大64位。</p>
+
+		<p>mysql把BIT当作字符串类型，当检索BIT(1)时结果是一个包含二进制0/1的字符串，而不是ASCII的‘0’/‘1’。</p></li>
+	<li>SET
+
+		<p>如果需要保存很多true/false，可以考虑合并这些列到一个SET数据类型</p></li>
+</ol>
+
+<hr />
+
+<h3>mysql schema设计中的陷阱</h3>
+
+<ol>
+	<li>太多的列</li>
+	<li>太多的关联</li>
+	<li>太多的枚举值</li>
+	<li>尽量少使用null，但也不要害怕使用null</li>
+</ol>
+
+<hr />
+
+<h3>范式和反范式</h3>
+
+<ol>
+	<li>三范式
+
+		<ol>
+			<li>表中的每⼀列都不能再分割</li>
+			<li>每个字段都要完全依赖主键</li>
+			<li>⾮主键必须直接依赖于主键，⽽不是间接依赖于主键</li>
+		</ol></li>
+	<li>范式
+
+		<ol>
+			<li>优点
+
+				<p>范式化的更新操作通常⽐反范式化要快</p>
+
+				<p>范式化的表通常更⼩，更⼀更好地放在内存⾥</p></li>
+			<li>缺点
+
+				<p>需要更多的关联</p></li>
+			<li>反范式
+
+				<ol>
+					<li>优点
+
+						<p>避免关联</p></li>
+				</ol></li>
+		</ol></li>
+</ol>
+
+<hr />
+
+<h3>缓存表和汇总表</h3>
+
+<p>有时提升性能最好的方法是在同一张表中保存冗余数据，有时也需要创建完全独立的汇总表或缓存表。</p>
+
+<p>缓存表表示存储可以比较简单的从schema其他表获取数据的表。</p>
+
+<p>汇总表一般保存食用group by语句聚合数据的表。</p>
+
+<hr />
+
+<h3>物化视图</h3>
+
+<p>物化视图实际上是预先计算并且存储在磁盘上的表，可以通过各种策略刷新和更新。 </p>
+
+</body>
+</html>
+

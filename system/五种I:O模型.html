@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>五种I/O模型</title>
+	</head>
+<body>
+<h1>五种I/O模型</h1>
+
+<hr />
+
+<h2>前提概念解释</h2>
+
+<h3>用户空间与内核空间</h3>
+
+<p>操作系统都采用虚拟存储器，对32位操作系统而言，它的寻址空间（虚拟存储空间）为4G（2的32次方）。</p>
+
+<p><strong>操作系统的核心是内核，独立于普通的应用程序，可以访问受保护的内存空间，也有访问底层硬件设备的所有权限</strong>。</p>
+
+<p>为了保证用户进程不能直接操作内核，保证内核的安全，<strong>操作系统将虚拟空间划分为两部分，一部分为内核空间，一部分为用户空间</strong>。</p>
+
+<h3>进程切换</h3>
+
+<p>为了控制进程的执行，内核必须有能力挂起正在CPU上运行的进程，并恢复以前挂起的某个进程的执行。</p>
+
+<p>从一个进程的运行转到另一个进程上运行，这个过程中经过一系列变化：</p>
+
+<ol>
+	<li>保存处理机上下文，包括程序计数器和其他寄存器；</li>
+	<li>更新PCB信息；</li>
+	<li>把进程的PCB移入相应的队列，如就绪、在某事件阻塞等队列；</li>
+	<li>选择另一个进程执行，并更新其PCB；</li>
+	<li>更新内存管理的数据结构；</li>
+	<li>恢复处理机上下文</li>
+</ol>
+
+<h3>进程的阻塞</h3>
+
+<p>正在执行的进程，由于期待的某些事件未发生，则由系统自动执行阻塞原语（Block），使自己由运行状态变为阻塞状态。</p>
+
+<p>进程的阻塞是进程自身的一种主动行为，也因此只有处于运行状态的进程（获得CPU），才可能将其转为阻塞状态。</p>
+
+<h3>文件描述符fd</h3>
+
+<p>Linux系统中，把一切都看作是文件。文件分为：普通文件、目录文件、链接文件和设备文件。</p>
+
+<p>当进程打开现有文件或创建新文件时，内核向进程返回一个<strong>文件描述符</strong>，文件描述符就是内核为了高效管理已被打开的文件所创建的索引，用来指向被打开的文件。</p>
+
+<p><strong>所有执行I/O操作的系统调用都会通过文件描述符</strong>。</p>
+
+<p>进程刚启动的时候，0是标准输入，1是标准输出，2是标准错误。此时打开一个新的文件，文件描述符会是3。POSIX标准要求每次打开文件时（含socket）必须使用当前进程中最小可用的文件描述符号码。</p>
+
+<h4>文件描述符、文件、进程间的关系</h4>
+
+<h5>描述</h5>
+
+<ul>
+	<li>每个文件描述符会与一个打开的文件相对应</li>
+	<li>不同的文件描述符也可能指向同一文件</li>
+	<li>相同的文件可以被不同的进程打开，也可以在同一个进程被多次打开</li>
+</ul>
+
+<h5>系统为维护文件描述符，建立了三张表</h5>
+
+<ul>
+	<li>进程级的文件描述符</li>
+	<li>系统级的文件描述符</li>
+	<li>文件系统的i-node表</li>
+</ul>
+
+<figure><img src="/Users/xerxes/note/system/src/%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%BB%B4%E6%8A%A4%E8%A1%A8.jpg"/></figure>
+
+<h5>表之间的关系</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E8%A1%A8%E7%9A%84%E5%85%B3%E7%B3%BB.jpg"/></figure>
+
+<ul>
+	<li>进程A中，文件描述符1和30都指向了同一个打开的文件句柄23，可能是该进程多次对该文件执行打开操作</li>
+	<li>进程A中的文件描述符2和进程B的文件描述符2都指向了同一个打开的文件句柄73，有几种可能：
+
+		<ul>
+			<li>进程A和进程B是父子进程关系</li>
+			<li>进程A和进程B打开了同一个文件，且文件描述符相同</li>
+			<li>进程A和进程B中某进程通过UNIX域套接字将一个打开的文件描述符传递给另一个进程</li>
+		</ul></li>
+	<li>进程A的描述符0和进程B的描述符3分别指向不同的文件句柄，但句柄均指向i-node表的相同条目1936，也就是指向了同一文件。可能因为每个进程各自对同一个文件发起了打开请求，同一个进程两次打开同一个文件</li>
+</ul>
+
+<h5>文件描述符限制</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E9%99%90%E5%88%B6.jpg"/></figure>
+
+<h3>缓存I/O</h3>
+
+<p>缓存I/O又称作标准I/O，大多数文件系统的默认I/O都是缓存I/O。</p>
+
+<p>在Linux的缓存I/O机制中，操作系统会将I/O的数据缓存在文件系统的页缓存（page cache）中，也就是说：<strong>数据会先被拷贝到操作系统内核的缓冲区中，然后才会从操作系统内核的缓冲区拷贝到应用程序的地址空间</strong>。</p>
+
+<p>缓存I/O的缺点是：数据在传输过程中需要在应用程序地址空间和内核进行多次数据拷贝，这些数据拷贝操作所带来的CPU以及内存开销是非常大的。</p>
+
+<hr />
+
+<h2>Linux I/O模型</h2>
+
+<p><strong>网络I/O的本质是socket的读取，socket在linux系统被抽象为流，I/O可以理解为对流的操作</strong>。</p>
+
+<p>对于一次I/O访问（以read为例），数据先被拷贝到操作系统内核的缓冲区，然后才会从操作系统内核的缓冲区拷贝到应用程序的地址空间。因此一个read发生时，会经历两个阶段：</p>
+
+<ol>
+	<li>等待数据准备</li>
+	<li>将数据从内核拷贝到进程中</li>
+</ol>
+
+<p>对于socket而言：</p>
+
+<ol>
+	<li>通常涉及等待网络上的数据分组到达，然后被复制到内核的某个缓冲区</li>
+	<li>把数据从内核缓冲区复制到应用进程缓冲区</li>
+</ol>
+
+<p>网络应用需要处理的无非就是两大类问题：<strong>网络I/O、数据拷贝</strong>。</p>
+
+<h3>网络I/O的模型大致有几种</h3>
+
+<ul>
+	<li>同步模型（synchronous IO）</li>
+	<li>阻塞IO（blocking IO）</li>
+	<li>非阻塞IO（non-blocking IO）</li>
+	<li>多路复用IO（multiplexing IO）</li>
+	<li>信号驱动式IO（signal-driven IO）</li>
+	<li>异步IO（asynchronous IO）</li>
+</ul>
+
+<h3>基本IO模型的简单矩阵</h3>
+
+<figure><img src="/Users/xerxes/note/system/src/Linux%E5%9F%BA%E6%9C%ACIO%E6%A8%A1%E5%9E%8B%E7%AE%80%E5%8D%95%E7%9F%A9%E9%98%B5.jpg"/></figure>
+
+<p>每个IO模型都有自己的使用模式，它们对于特定的应用程序都有自己的优点。</p>
+
+<p>常见的IO模型有：<strong>阻塞、非阻塞、IO多路复用、异步</strong>。</p>
+
+<h3>同步阻塞IO</h3>
+
+<h4>网络模型</h4>
+
+<p>在这个IO模型中，用户空间的应用程序执行一个系统调用（recvfrom），这会导致应用程序阻塞，什么也不干，直到数据准备好，并且将数据从内核复制到用户进程，最后进程再处理数据。</p>
+
+<p>在等待数据和处理数据两个阶段，整个进程被阻塞，不能处理别的网络IO。调用应用程序处于一种不再消费CPU而只是简单等待响应的状态。</p>
+
+<p>在调用recv()/recvfron()函数时，发生在内核中等待数据和复制数据的过程大致如下图：</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E9%98%BB%E5%A1%9E%E5%BC%8FIO.jpg"/></figure>
+
+<h4>流程描述</h4>
+
+<p>当用户进程调用了recv()/recvfron()这个系统调用时，</p>
+
+<ol>
+	<li><strong>kernel就开始了IO的第一个阶段：准备数据</strong>。数据被拷贝到操作系统内核的缓冲区需要一个过程，这个过程中用户进程会被阻塞；</li>
+	<li><strong>第二个阶段：当kernel一直等到数据准备好了，他就会将数据从kernel拷贝到用户内存</strong>，然后kernel返回结果，用户解除block状态，重新运行</li>
+</ol>
+
+<h3>同步非阻塞IO</h3>
+
+<h4>网络模型</h4>
+
+<p>在这种模型中，设备是以非阻塞的形式打开的。这意味着IO操作不会立即完成，read操作可能会返回一个错误代码，说明这个命令不能立即满足（EAGAIN或EWOULDBLOCK）。</p>
+
+<p>在网络IO中，非阻塞IO也会进行recvfrom系统调用，检查数据是否准备好，与阻塞IO不同，<strong>非阻塞将大的整片时间的阻塞分成N多小的阻塞，所以进程不断有机会获取CPU</strong>。</p>
+
+<h4>流程描述</h4>
+
+<p>非阻塞调用recvfrom系统调用之后，进程没有被阻塞，内核立马返回给进程，如果数据没有准备好，就返回一个error。</p>
+
+<p>进程返回之后，可以做别的事情，然后再发起recvfrom系统调用，重复上面的过程，循环往复进行recvfrom系统调用，此过程称为<strong>轮询</strong>。</p>
+
+<p>知道数据准备好，再拷贝数据到进程，进行数据处理。<strong>拷贝数据的整个过程，进程仍然是属于阻塞的状态</strong>。</p>
+
+<p>在Linux下，可以通过设置socket使其变为non-blocking。当对一个non-blocking socket执行读操作时，流程如下图：</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E9%9D%9E%E9%98%BB%E5%A1%9EIO%E6%A8%A1%E5%9E%8B.jpg"/></figure>
+
+<h3>IO多路复用</h3>
+
+<h4>网络模型</h4>
+
+<p>由于同步非阻塞需要不断主动轮询，轮询占据了很大一部分过程，消耗大量的CPU时间，而后台可能有多个任务同时进行，人们就想到了循环查询多个任务的完成状态，只要有任何一个任务完成，就去处理它。</p>
+
+<p>如果轮询不是进程的用户态，而是有人帮忙，这就是所谓的IO多路复用。</p>
+
+<p>I/O复用模型会用到select、poll、epoll函数，这几个函数也会使进程阻塞，与blocking IO阻塞不同在于，<strong>这几个函数可以同时阻塞多个IO操作，而且可以同时对多个读操作，多个写操作的I/O函数进行检测，而且不是等到socket数据全部到达再处理，而是有了一部分数据就会调用用户进程来处理</strong>。</p>
+
+<h4>流程描述</h4>
+
+<p>对于IO多路复用，有些地方也称为event driven IO，也就是轮询多个socket，单个process就可以同时处理多个网络连接的IO。具体流程如下图：</p>
+
+<figure><img src="/Users/xerxes/note/system/src/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8%E6%A8%A1%E5%9E%8B.jpg"/></figure>
+
+<p>select调用是内核级别的，当用户进程调用了select，那么整个进程会被block ，select轮询相对非阻塞的轮询区别在于：<strong>前者可以等待多个socket，kernel会“监视”所有select负责的socket，当任何一个socket中的数据准备好了，select就会返回</strong>，然后进程再进行recvfrom系统调用，将数据由内核缓冲区拷贝到用户进程，这个过程依然是阻塞的。</p>
+
+<h4>与阻塞IO相比</h4>
+
+<p>IO多路复用有时并不比blocking IO更好，因为它需要使用两个system call（select和recvfrom），而blocking IO只需要recvfrom。但是select的优势在于可以同时处理多个connection。</p>
+
+<p>在IO多路复用模型中，对于每个socket一般都设置成non-blocking，但是如上图所示整个用户的process其实是一直被block的。<strong>只不过process是被select这个函数block，而不是被socket给block</strong>。</p>
+
+<h4>并发编程</h4>
+
+<p>在I/O编程过程中，当需要同时处理多个客户端接入请求时，就可以利用I/O多路复用技术来完成。</p>
+
+<p>I/O多路复用技术<strong>通过把多个I/O阻塞复用到同一个select的阻塞上，从而使得系统在单线程的情况下可以同时处理多个客户端请求</strong>。</p>
+
+<p>与传统多进程/多线程模型比，<strong>I/O多路复用最大的优势就在于系统开销小，不需要创建新的额外进程或者线程，也不需要维护这些进程或者线程的运行</strong>。</p>
+
+<h4>select</h4>
+
+<h5>基本原理</h5>
+
+<p>Select函数监听的文件描述符分三类：writefds、readfds、exceptfds。</p>
+
+<p>调用后select函数会阻塞，直到有描述符就绪（有数据可读、可写或者有except），或者超时（timeout指定等待时间，如果立即返回设为null即可），函数返回。当select函数返回后，可以通过遍历fdset，来找到就绪的描述符。</p>
+
+<h5>基本流程</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8select%E6%B5%81%E7%A8%8B.jpg"/></figure>
+
+<h5>优缺点</h5>
+
+<p>Select的优点是几乎在所有平台上都支持。</p>
+
+<p>Select的本质是通过设置或者检查存放fd标志位的数据结构来进行下一步处理，这样的缺点是：</p>
+
+<ul>
+	<li>select最大缺陷就是单个进程所打开的fd是有一定限制的，它由<code>FD_SETSIZE</code>设置，默认值为1024；</li>
+	<li>对socket进行扫描时是线性扫描的，即采用轮询的方法，效率较低。当socket较多时，每次select都要所有socket来完成调度，不管哪个socket是活跃的，这会浪费CPU大量时间。<strong>如果能给socket注册某个回调函数，当它们活跃时，自动完成相关操作，那就避免了轮询。这正是epoll和kqueue做的</strong>；</li>
+	<li>需要维护一个用来存放大量fd的数据结构，这样会使得用户空间和内核空间在传递该结构时复制开销很大。</li>
+</ul>
+
+<h4>poll</h4>
+
+<h5>基本原理</h5>
+
+<p>Poll本质上和select没有区别，它将用户传入的数组拷贝到内核空间，然后查询每个fd对应的设备状态，如果设备就绪则在设备等待队列中加入一项并继续遍历，如果遍历完所有fd后没有发现就绪设备，则挂起当前进程，直到设备就绪或者主动超时，被唤醒后它又要再次遍历fd。这个过程经历了多次无谓的遍历。</p>
+
+<p>Poll没有最大连接数的限制，原因是它是基于链表来存储的，但是同样有一个缺点：大量的fd的数组被整体复制于用户态和内核地址空间之间，而不管这样的复制是不是有意义。</p>
+
+<p>poll还有一个特点是“水平触发”，如果报告了fd后，没有被处理，那么下次poll时会再次报告该fd。</p>
+
+<h4>epoll</h4>
+
+<p>select和poll都需要在返回后，通过遍历文件描述符来获取已经就绪的socket。事实上，同时连接的大量客户端在一时刻可能只有很少的处于就绪状态，因此随着监视的描述符数量的增长，其效率也会线性下降。</p>
+
+<p>相对于select和poll来说，epoll更加灵活，没有描述符限制。<strong>epoll使用一个文件描述符管理多个描述符，将用户关系的文件描述符的事件存放到内核的一个事件表中，这样在用户空间和内核空间的copy只需一次</strong>。</p>
+
+<h5>基本原理</h5>
+
+<p>Epoll支持水平触发和边缘触发。</p>
+
+<p>最大特点在于边缘触发，它只告诉进程哪些fd刚刚变为就绪态，并且只会通知一次。</p>
+
+<p>Epoll使用事件的就绪通知方式，通过<code>epoll_ctl</code>注册fd，一旦该fd就绪，内核就会采用类似callback的回调机制来激活该fd，<code>epoll_wait</code>便可以收到通知。</p>
+
+<p>在select/poll中，进程只有在调用一定的方法后，内核才对所有监视的文件描述符进行扫描，而epoll事先通过<code>epoll_ctl()</code>来注册一个文件描述符，一旦基于某个文件描述符就绪时，内核会采用类似callback的回调机制，迅速激活这个文件描述符，当进程调用<code>epoll_wait()</code>时便得到通知。(此处去掉了遍历文件描述符，而是通过监听回调的的机制。这正是epoll的魅力所在。)</p>
+
+<h5>优点</h5>
+
+<ul>
+	<li>没有最大并发连接的限制，能打开的FD的上限远大于1024（1G的内存上能监听约10万个端口）；</li>
+	<li>效率提升，不是轮询的方式，不会随着FD数目的增加效率下降。只有活跃可用的FD才会调用callback函数；即Epoll最大的优点就在于它只管你“活跃”的连接，而跟连接总数无关，因此在实际的网络环境中，Epoll的效率就会远远高于select和poll；</li>
+	<li>内存拷贝，利用mmap()文件映射内存加速与内核空间的消息传递；即epoll使用mmap减少复制开销</li>
+</ul>
+
+<h5>对fd的操作</h5>
+
+<p>Epoll对fd的操作有两种模式：LT（level trigger）和ET（edge trigger）。</p>
+
+<ol>
+	<li>LT模式
+
+		<p>LT(level triggered)是缺省的工作方式，并且同时支持block和no-block socket。</p>
+
+		<p>当<code>epoll_wait</code>检测到描述符事件发生并将此事件通知应用程序，应用程序可以不立即处理该事件。下次调用<code>epoll_wait</code>时，会再次响应应用程序并通知此事件。</p></li>
+	<li>ET模式
+
+		<p>ET(edge-triggered)是高速工作方式，只支持no-block socket。</p>
+
+		<p>当<code>epoll_wait</code>检测到描述符事件发生并将此事件通知应用程序，应用程序必须立即处理该事件。如果不处理，下次调用<code>epoll_wait</code>时，不会再次响应应用程序并通知此事件。</p>
+
+		<p>ET模式在很大程度上减少了epoll事件被重复触发的次数，因此效率要比LT模式高。epoll工作在ET模式的时候，必须使用非阻塞套接口，以避免由于一个文件句柄的阻塞读/阻塞写操作把处理多个文件描述符的任务饿死。</p></li>
+</ol>
+
+<h4>select、poll、epoll区别</h4>
+
+<h5>支持一个进程所能打开的最大连接数</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/%E6%94%AF%E6%8C%81%E4%B8%80%E4%B8%AA%E8%BF%9B%E7%A8%8B%E6%89%80%E8%83%BD%E6%89%93%E5%BC%80%E7%9A%84%E6%9C%80%E5%A4%A7%E8%BF%9E%E6%8E%A5%E6%95%B0.jpg"/></figure>
+
+<h5>FD剧增后带来的IO效率问题</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/FD%E5%89%A7%E5%A2%9E%E5%90%8E%E5%B8%A6%E6%9D%A5%E7%9A%84IO%E6%95%88%E7%8E%87%E9%97%AE%E9%A2%98.jpg"/></figure>
+
+<h5>消息传递方式</h5>
+
+<figure><img src="/Users/xerxes/note/system/src/%E6%B6%88%E6%81%AF%E4%BC%A0%E9%80%92%E6%96%B9%E5%BC%8F.jpg"/></figure>
+
+<h5>总结</h5>
+
+<p>综上，在选择select，poll，epoll时要根据具体的使用场合以及这三种方式的自身特点：</p>
+
+<ul>
+	<li>表面上看epoll的性能最好，但是在连接数少并且连接都十分活跃的情况下，select和poll的性能可能比epoll好，毕竟epoll的通知机制需要很多函数回调</li>
+	<li>select低效是因为每次它都需要轮询。但低效也是相对的，视情况而定，也可通过良好的设计改善</li>
+</ul>
+
+<h3>中间总结</h3>
+
+<h4>同步</h4>
+
+<p>目前已经了解了三种I/O模型，在用户进程进行系统调用的时候，它们在等待数据准备好的时候处理的方式不一样：有直接等待、轮询、内核轮询几种。数据准备和拷贝的两个过程：</p>
+
+<ol>
+	<li>第一阶段有的阻塞，有的不阻塞，有的可以阻塞也可以不阻塞</li>
+	<li>第二阶段都是阻塞的</li>
+</ol>
+
+<p><strong>从整个I/O过程来看，它们都是顺序执行的，因此都可以归为同步模型（synchronous）。都是进程主动等待且向内核检查状态</strong>。</p>
+
+<h4>高并发处理</h4>
+
+<p>高并发的程序一般使用同步非阻塞方式，而非多线程+同步阻塞方式。</p>
+
+<p>并发数指的是同时进行的任务数（如同时服务的HTTP请求数），而并行数是可以同时工作的物理资源数量（如CPU核数）。</p>
+
+<p>通过合理调度任务的不同阶段，并发数可以远远大于并行数，这就是区区几个CPU可以支持上万个用户并发请求的奥秘。在这种高并发情况下，为每个任务创建一个进程或线程的开销很大。而同步非阻塞方式可以把多个IO请求丢到后台去，这就可以在一个进程里服务大量的并发IO请求。</p>
+
+<h3>信号驱动式IO（signal-driven IO）</h3>
+
+<p>首先允许socket进行信号驱动IO，并安装一个信号处理函数，进程继续运行并不阻塞。当数据准备好，进程收到一个SIGIO信号，可以在信号处理函数中调用I/O操作函数处理数据。</p>
+
+<p>过程如下图：</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E4%BF%A1%E5%8F%B7%E9%A9%B1%E5%8A%A8IO%E6%A8%A1%E5%9E%8B.jpg"/></figure>
+
+<h3>异步非阻塞IO（asynchronous IO）</h3>
+
+<h4>网络模型</h4>
+
+<p>相对于同步IO，异步IO不是顺序执行的。</p>
+
+<p><strong>I/O两个阶段，进程都是非阻塞的</strong>。</p>
+
+<h4>流程描述</h4>
+
+<p>用户进程发起<code>aio_read</code>操作之后，立刻做别的事情；</p>
+
+<p>Kernel收到一个asynchronous read之后，首先会立刻返回，不对用户进程产生任何block；</p>
+
+<p>随后kernel等待数据准备完成，然后将数据拷贝到用户内存；</p>
+
+<p>拷贝完成，kernel给用户进程发送一个signal或执行一个基于线程的回调函数来完成这次I/O处理过程。</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E5%BC%82%E6%AD%A5IO%E6%A8%A1%E5%9E%8B.jpg"/></figure>
+
+<h4>信号通知</h4>
+
+<p>如果进程正在用户态做别的任务，那就强行打断之，调用事先注册的信号处理函数，这个函数可以决定何时以及如何处理这个异步任务。由于信号处理函数是突然到达的，因此保险起见，一般是把事件“登记”一下放进队列，然后返回该进程原来在做的任务。</p>
+
+<p>如果进程正在内核态做别的任务，例如以同步阻塞方式读写磁盘，那就只好把这个通知挂起，等到内核态的任务做完，快要回到用户态的时候，再触发信号通知。</p>
+
+<p>如果这个进程现在被挂起，那就把进程唤醒，下次有CPU空闲时，就会调度到这个进程，触发信号通知。</p>
+
+<h4>AIO动机</h4>
+
+<p>同步阻塞模型需要在 IO 操作开始时阻塞应用程序。这意味着不可能同时重叠进行处理和 IO 操作。</p>
+
+<p>同步非阻塞模型允许处理和 IO 操作重叠进行，但是这需要应用程序根据重现的规则来检查 IO 操作的状态。</p>
+
+<p>这样就剩下异步非阻塞 IO 了，它允许处理和 IO 操作重叠进行，包括 IO 操作完成的通知。</p>
+
+<p>IO多路复用除了需要阻塞之外，select 函数所提供的功能（异步阻塞 IO）与 AIO 类似。不过，它是对通知事件进行阻塞，而不是对 IO 调用进行阻塞。</p>
+
+<h3>关于异步阻塞</h3>
+
+<p>有时我们的 API 只提供异步通知方式，例如在 node.js 里，但业务逻辑需要的是做完一件事后做另一件事，例如数据库连接初始化后才能开始接受用户的 HTTP 请求。这样的业务逻辑就需要调用者是以阻塞方式来工作。</p>
+
+<p>为了在异步环境里模拟 “顺序执行” 的效果，就需要把同步代码转换成异步形式，这称为 CPS（Continuation Passing Style）变换。</p>
+
+<h3>总结</h3>
+
+<h4>blocking和non-blocking区别</h4>
+
+<p>调用blocking IO会一直block住对应的进程直到操作完成，而non-blocking IO在kernel还准备数据的情况下会立刻返回。</p>
+
+<h4>synchronous IO和asynchronous IO区别</h4>
+
+<p>两者的区别就在于synchronous IO做”IO operation”的时候会将process阻塞。按照这个定义，之前所述的blocking IO，non-blocking IO，IO multiplexing都属于synchronous IO。</p>
+
+<p>定义中所指的”IO operation”是指真实的IO操作，就是例子中的recvfrom这个system call。non-blocking IO在执行recvfrom这个system call的时候，如果kernel的数据没有准备好，这时候不会block进程。但是，当kernel中数据准备好的时候，recvfrom会将数据从kernel拷贝到用户内存中，这个时候进程是被block了，在这段时间内，进程是被block的。</p>
+
+<p>而asynchronous IO则不一样，当进程发起IO 操作之后，就直接返回再也不理睬了，直到kernel发送一个信号，告诉进程说IO完成。在这整个过程中，进程完全没有被block。</p>
+
+<figure><img src="/Users/xerxes/note/system/src/IO%E6%A8%A1%E5%9E%8B%E6%AF%94%E8%BE%83.jpg"/></figure>
+
+</body>
+</html>
+

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>&lt;script type=&quot;text/x-mathjax-config&quot;&gt;</title>
+	</head>
+<body>
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({tex2jax: {inlineMath:[['$','$']]}});
+</script>
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<h1>概率和概率分布</h1>
+
+<hr />
+
+<h3>如何应用概率进行推断</h3>
+
+<h5>概率的解释</h5>
+
+<ol>
+	<li>古典解释
+
+		<p>古典解释的适用性取决于所有基本事件都是等可能的；在概率的古典解释中，每种可能的不同结果被称为一个基本事件；一个事件被认为是许多基本事件的集合。</p></li>
+	<li>频率解释
+
+		<p>定义概率的一种经验方法，如果试验重复了很多次，事件E发生的次数占30%，则0.3应该是事件E的概率的很好的近似。</p></li>
+	<li>主观解释
+
+		<p>应用于不大可能进行重复试验的问题，使用个人或主观的概率给出一个一次性的估计</p></li>
+</ol>
+
+<h5>事件和它们的概率</h5>
+
+<p><strong>事件</strong>是由若干样本点组成的集合。</p>
+
+<p>任何<strong>事件的概率</strong>就等于构成该事件的所有样本点的概率之和。</p>
+
+<h5>概率的一些基本关系</h5>
+
+<p><strong>事件的补</strong>：给定一个事件A，A的补就定义为：是由所有不属于A的样本点构成的事件</p>
+
+<p><strong>事件的并</strong>：给定两个事件A和B，A和B的并代表一个事件，该事件包含属于A的或B的或同时属于两者的所有样本点，计作$A \bigcup B$</p>
+
+<p><strong>事件的交</strong>：给定两个事件A和B，A和B的交代表一个事件， 该事件包含了所有同时属于事件A和B的样本点，计作$A \bigcap B$</p>
+
+<p><strong>加法法则</strong>：提供了一种方法，可以用来计算事件A发生或B发生或者两者同时发生的概率，也就是两个事件的并的概率，公式如下：</p>
+
+$$ P(A \bigcup B) = P(A) + P(B) - P(A \bigcap B) $$
+<p><strong>互斥事件</strong>：如果两个事件没有共同的样本点，我们就成这两个事件是互斥的。</p>
+
+<hr />
+
+<h3>条件概率和独立性</h3>
+
+<h5>条件概率</h5>
+
+<p>概率P(F|X) 称为事件F的条件概率，即在给定X这个事件已经发生的条件下，事件F的概率。</p>
+
+$$ P(A \mid B) = \dfrac{P(A \bigcap B)}{P(B)} $$
+<h5>无条件概率</h5>
+
+<p>P(F) 称为事件F的无条件概率或边缘概率，即在非常多的重复试验中事件F发生次数的比例。</p>
+
+<h5>独立事件</h5>
+
+<p>如果事件A的概率不因发生事件B而改变的话，称事件A和事件B是独立事件，定义如下：</p>
+
+$$ P(A \mid B) = P(A) $$
+$$ P(B \mid A) = P(B) $$
+<h5>贝叶斯定理</h5>
+
+<p>在对条件概率的讨论中，我们指出：当我们得到新的信息时，进行概率分析的一个重要方面就是要根据新的信息修正概率。</p>
+
+<p>我们往往要先对有关的具体事件进行原始的概率估计或者说是<strong>先验概率</strong>估计，以此来开始分析工作。然后进一步获取有关该事件的其他信息，根据这些信息把先验概率修正为<strong>后验概率</strong>。</p>
+
+<p><strong>贝叶斯定理</strong>提供的就是对概率进行修正的计算方法。</p>
+
+$$ P(A \mid B) $$
+$$ = \dfrac{P(A \bigcap B)}{P(B)} $$
+$$ = \dfrac{P(A \bigcap B)}{P(A \bigcap B) + P(nA \bigcap B)} $$
+$$ = \dfrac{P(B \mid A)P(A)}{P(B \mid A)P(A) + P(B \mid nA)P(nA)} $$
+<p>事件和它的补是互斥事件，并且它们的并是整个样本空间。因此，贝叶斯定理总是能够应用于计算事件和补的后验概率。</p>
+
+</body>
+</html>
+

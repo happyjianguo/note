@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>DataSet API</title>
+	</head>
+<body>
+<h1>DataSet API</h1>
+
+<hr />
+
+<h2>DataSet Transformations</h2>
+
+<p>Data transformations 将一个或多个DataSets 转换为新的DataSet。程序可以将多个transformations 组合为一个复杂的集合。</p>
+
+<h3>Map</h3>
+
+<p>Map transformation 在DataSet 的每一个元素上应用用户自定义的map function。</p>
+
+<p>它实现了一个一对一的mapping，每次调用函数必会返回一个元素。</p>
+
+<h3>FlatMap</h3>
+
+<p>FlatMap transformation 在DataSet 的每一个元素上应用用户自定义的flat-map function。它和map function 的区别是可能为每一个input 元素返回0或任意多个元素。</p>
+
+<hr />
+
+<h2>Iterations</h2>
+
+<p>迭代算法出现在许多数据分析的领域，如机器学习或者图分析。这些算法对于实现从大数据中提取有意义的结果至关重要。随着在非常大的DataSet 上运行迭代算法的需求越来越多，越来越需要以大规模并行的方式执行迭代。</p>
+
+<p>Flink 通过定义step function 并将它绑定在一个特别的iteration operator 上来实现迭代算法。iteration operator 有两种：<strong>Iterate</strong> 和<strong>Delta Iterate</strong>。它们都在当前迭代阶段重复调用step function，直到达到某个终止条件。</p>
+
+<h3>Iterate Operator</h3>
+
+<hr />
+
+</body>
+</html>
+

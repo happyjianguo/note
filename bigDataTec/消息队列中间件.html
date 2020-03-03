@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>消息队列中间件</title>
+	</head>
+<body>
+<h1>消息队列中间件</h1>
+
+<hr />
+
+<h3>消息中间件概念</h3>
+
+<p>消息队列中间件(Message Queue Middleware)是指利用高效可靠的消息传递机制进行与平台无关的数据交流，并基于数据通信来进行分布式系统的集成。通过提供<strong>消息传递</strong>和<strong>消息排队模型</strong>，它可以在分布式环境下扩展进程间的通信。</p>
+
+<hr />
+
+<h3>传递模式</h3>
+
+<p>消息中间件一般有两种传递模式：点对点模式(P2P,Point-to-Point)和发布/订阅模式(Pub/Sub)。</p>
+
+<h5>点对点</h5>
+
+<p>点对点模式是基于队列的，消息生产者发送消息到队列，消息消费者从队列中接收消息，队列的存在使得消息的异步传输称为可能。</p>
+
+<h5>发布/订阅</h5>
+
+<p>发布/订阅模式定义了如何向一个内容节点发布和订阅消息，这个内容节点称为topic，topic可以认为是消息传递的中介。topic使得消息的订阅者与发布者互相保持独立，不需要进行接触，发布/订阅模式在消息的一对多广播时采用。</p>
+
+<hr />
+
+<h3>消息中间件的作用</h3>
+
+<h5>解耦</h5>
+
+<p>消息中间件在处理过程中插入一个隐含的、基于数据的接口层，两边的处理过程都要实现这一接口。</p>
+
+<h5>冗余</h5>
+
+<p>有些情况下处理数据的过程会失败。消息中间件可以把数据进行持久化直到它们已经被完全处理，通过这一方式规避了数据丢失的风险。</p>
+
+<h5>扩展性</h5>
+
+<p>因为消息中间件解耦了应用的处理过程，所以提高消息入队和处理的效率是很容易的，只要另外增加处理过程即可。</p>
+
+<h5>削峰</h5>
+
+<p>在访问量剧增的情况下，应用仍然需要继续发挥作用，使用消息中间件能够使关键组件支撑突发访问压力。</p>
+
+<h5>可恢复性</h5>
+
+<p>当系统一部分组件失效时，不会影响到整个系统。消息中间件降低了进程间的耦合程度，即使一个处理消息的进程挂掉，加入消息中间件中的消息仍然可以在系统恢复后进行处理。</p>
+
+<h5>顺序保证</h5>
+
+<p>在大多数使用场景下，数据处理的顺序很重要，大部分消息中间件支持一定程度上的顺序性。</p>
+
+<h5>缓冲</h5>
+
+<p>在任何重要的系统中，都会存在需要不同处理时间的元素。消息中间件通过一个缓冲层来帮助任务最高效地执行，控制和优化数据流经过系统的速度。</p>
+
+<h5>异步通信</h5>
+
+<p>在很多时候应用不想也不需要立即处理消息。消息中间件提供了异步处理机制，允许应用把一些消息放入消息中间件中，但不立即处理它，在之后需要的时候再慢慢处理。</p>
+
+<hr />
+
+<h3>消息队列协议AMQP</h3>
+
+<blockquote>
+<p>AMQP(Advanced Message Queuing Protocol)是一个消息协议，它支持符合标准的客户端请求程序与符合标准的消息中间件代理进行通信。</p>
+</blockquote>
+
+<h5>协议结构</h5>
+
+<p><strong>broker</strong>：接收和分发消息的应用</p>
+
+<p><strong>virtual host</strong>：出于多租户和安全因素设计，把AMQP的基本组件划分到一个虚拟的分组中，类似于网络中的namespace概念。当多个不同的用户使用同一个中间件提供的服务时，可以划分多个vhost，每个用户在自己的vhost中创建exchange/queue等。</p>
+
+<p><strong>channel</strong>：如果每一次访问都建立一个connection，在消息量大的时候开销大效率低。channel作为轻量级的connection极大减少了操作系统建立connection的开销。主要用的线程池的思想。</p>
+
+<p><strong>exchange</strong>：message到达broker的第一站，根据分发规则，匹配查询表中的routing key，分发消息到queue中去。常用类型有：direct、topic、fanout。</p>
+
+<p><strong>queue</strong>：消息最终被送到queue中等待consumer取走。一个message可以被同时拷贝到多个queue中。</p>
+
+<p><strong>binding</strong>：exchange和queue之间的虚拟连接，binding可以包含routing key。binding信息被保存到exchange中的查询表中，用于message的分发依据。可以理解为exchange与queue的关系对照表。</p>
+
+<h5>工作流程</h5>
+
+<ol>
+	<li>消息被发布到exchange</li>
+	<li>Exchange按照binding的规则将消息副本分发到queue</li>
+	<li>AMQP broker传递消息给queue关联的consumer，或者consumer按照需求从queue拉取信息</li>
+</ol>
+
+</body>
+</html>
+

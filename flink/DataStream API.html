@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>DataStream API</title>
+	</head>
+<body>
+<h1>DataStream API</h1>
+
+<hr />
+
+<h2>简单示例</h2>
+
+<pre><code>//1、设置运行环境
+StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+//2、配置数据源读取数据
+DataStream text = env.readTextFile (&quot;input&quot;);
+//3、进行一系列转换
+DataStream&lt;Tuple2&lt;String, Integer&gt;&gt; counts = text.flatMap(new Tokenizer()).keyBy(0).sum(1);
+//4、配置数据汇写出数据
+counts.writeAsText(&quot;output&quot;);
+//5、提交执行
+env.execute(&quot;Streaming WordCount&quot;);
+</code></pre>
+
+<p>这是一个简单的流式计算Work Count 的示例，给出了基于Flink DataStream API 来发程序的基本结构。其过程是：</p>
+
+<ul>
+	<li>为了实现Work Count，首先要获得一个<code>StreamExecutionEnvironment </code>对象，它是构建图过程中的上下文对象。基于这个对象可以添加一些算子；</li>
+	<li>使用<code>env</code>对象读取数据源，拿到一个<code>DataStream</code>对象，可以看作是一个无限的数据集；</li>
+	<li>通过<code>FlatMap</code>操作将数据集中的每一条记录分割为单词，得到一个记录是单词的流，调用<code>FlatMap</code>时会在底层的DAG图中添加一个<code>FlatMap</code>算子。然后通过<code>keyBy</code>将流中的单词进行分组，最后通过<code>sum</code>累计计算每一个单词的数据，计算出的单词的数据组成了一个新的流；</li>
+	<li>将新的流输出到文件中；</li>
+	<li>最后，调用<code>env.execute</code>方法来开始程序的执行。</li>
+</ul>
+
+<hr />
+
+<h2>操作概览</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/DataStream%E6%93%8D%E4%BD%9C%E6%A6%82%E8%A7%88.jpg"/></figure>
+
+<p><code>DataStream</code>是Flink 流处理API 中最核心的数据结构，它代表了一个运行在多个分区上的并行流。整个计算逻辑图的构建就是围绕调用DataStream 对象上的不同操作产生新的<code>DataStream</code> 对象展开的。</p>
+
+<p>整体来说<code>DataStream</code> 上的操作可以分为四类：</p>
+
+<ul>
+	<li>对于单条记录的操作，比如：
+
+		<ul>
+			<li><code>Filter</code>：筛除掉不符合要求的记录；</li>
+			<li><code>Map</code>：对每条记录做一个转换</li>
+		</ul></li>
+	<li>对于多条记录的操作，比如：
+
+		<ul>
+			<li><code>Window</code>：统计一个小时内的订单总成交量，就需要将一个小时内的所有订单记录的成交量加在一起，就可以通过<code>Window</code> 将需要的记录关联到一起进行处理；</li>
+		</ul></li>
+	<li>对多个流进行操作并转换为单个流，如<code>Union</code>、<code>Join</code>或<code>Connect</code> 等操作。这些操作合并的逻辑不同，但是最终都会产生一个新的统一的流，从而可以进行一些跨流的操作；</li>
+	<li>把一个流按一定规则拆分为多个流，如<code>Split</code>操作，每个流是之前流的一个子集，这样就可以对不同的流做不同的处理</li>
+</ul>
+
+<hr />
+
+<h2>DataStream 基本转换</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/DataStream%E5%9F%BA%E6%9C%AC%E8%BD%AC%E6%8D%A2.jpg"/></figure>
+
+<p>为了支持这些不同的流操作，Flink 引入了一组不同的流类型，用来表示某些操作的中间流数据集类型。</p>
+
+<ul>
+	<li>对于一些针对单条记录的操作，如<code>Map</code>等，操作的结果仍然是基本的<code>DataStream</code> 类型；</li>
+	<li>对于<code>Split</code>操作，首先会产生一个<code>SplitStream</code>，基于<code>SplitStream</code> 可以使用<code>select</code>方法来筛选出符合要求的记录并得到一个基本的流;</li>
+	<li>对于<code>connect</code>操作，在调用<code>streamA.connect(streamB)</code>后可以得到一个专门的<code>ConnectedStream</code>。<code>ConnectedStream</code>支持的操作与普通的<code>DataStream</code>有所不同，由于它代表两个不同的流混合的结果，因此它允许用户对两个流中的记录分别指定不同的处理逻辑，然后他们的处理结果形成一个新的<code>DataStream</code>流。由于不同记录的处理是在同一个算子中进行的，因此它们在处理时可以方便的共享一些状态信息；</li>
+	<li><code>window</code>操作可以对流按时间或者个数进行一些切分，从而将流切分成一个个较小的分组。当一个分组中的所有记录到达后，用户可以拿到该分组中的所有记录，从而进行一些遍历或者累加操作。这样，对每个分组的处理都可以得到一组输出数据，这些输出数据形成一个新的基本流；</li>
+	<li>对于普通的<code>DataStream</code>，必须使用<code>allWindow</code>操作，它代表对整个流进行统一的<code>Window</code>处理，因此是不能使用多个算子实例进行同时计算的。针对这一问题，就需要首先使用<code>KeyBy</code>方法对记录按Key进行分组，然后才可以并行的对不同Key对应的记录进行单独的<code>Window</code>操作</li>
+</ul>
+
+<hr />
+
+<h2>KeyedStream</h2>
+
+<p><code>KeyedStream</code>用来表示根据指定的key 进行分组的数据流，能够在多个并发实例上并行的对数据流进行处理。</p>
+
+<p>一个<code>KeyedStream</code>可以通过<code>DataStream.keyBy()</code>来获得，而在<code>KeyedStream</code>上进行任何transformation 都将转变回<code>KeyedStream</code>。</p>
+
+<figure><img src="/Users/xerxes/note/flink/src/KeyedStream.jpg"/></figure>
+
+<p>如图所示是基本<code>DataStream</code>对象上的<code>allWindow</code>操作和<code>KeyedStream</code>上的<code>Window</code>操作的对比。</p>
+
+<p><code>KeyBy</code>和<code>Window</code>都是对数据进行分组，但是<code>KeyBy</code>是在水平方向对流进行切分，而<code>Window</code>是在垂直方向对流进行切分。</p>
+
+<p>使用<code>KeyBy</code>进行数据切分之后，后续算子的每一个实例可以只处理特定Key集合对应的数据。除了处理本身外，Flink 中允许算子维护一部分State，在<code>KeyedStream</code>算子的状态也是可以分布式存储的。由于<code>KeyBy</code>是一种确定的数据分配方式，因此即使发生Failover 作业重启，甚至发生了并发度的改变，Flink 都可以重新分配Key 分组并保证处理某个Key 的分组一定包含该Key 的状态，从而保证一致性。</p>
+
+<p><code>KeyBy</code>操作只有当Key 的数量超过算子的并发实例数才可以较好的工作。由于同一个Key 对应的所有数据都会发送到同一个实例上，因此如果Key 的数量比实例数量少，部分实例收不到数据，无法发挥分布式计算能力。</p>
+
+<hr />
+
+<h2>物理分组方式</h2>
+
+<p>除<code>KeyBy</code>之外，Flink 在算子之前交换数据时还支持其他的物理分组方式。</p>
+
+<ul>
+	<li>Global: 上游算子将所有记录发送给下游算子的第一个实例；</li>
+	<li>Broadcast: 上游算子将每一条记录发送给下游算子的所有实例；</li>
+	<li>Forward：只适用于上游算子实例数与下游算子相同时，每个上游算子实例将记录发送给下游算子对应的实例；</li>
+	<li>Shuffle：上游算子对每条记录随机选择一个下游算子进行发送；</li>
+	<li>Rebalance：上游算子通过轮询的方式发送数据；</li>
+	<li>Rescale：当上游和下游算子的实例数为 n 或 m 时，如果 n &lt; m，则每个上游实例向ceil(m/n)或floor(m/n)个下游实例轮询发送数据；如果 n &gt; m，则 floor(n/m) 或 ceil(n/m) 个上游实例向下游实例轮询发送数据；</li>
+	<li>PartitionCustomer：当上述内置分配方式不满足需求时，用户还可以选择自定义分组方式。</li>
+</ul>
+
+<hr />
+
+<h2>类型系统</h2>
+
+<p>Flink DataStream 对象都是强类型的。每一个DataStream 对象都需要指定元素的类型，Flink 自己底层的序列化机制正是依赖于这些信息对序列化等进行优化。具 体来说，Flink 底层，它是使用TypeInformation 对象对类型进行描述的，TypeInformation 对象定义了一组类型相关的信息供序列化框架使用。</p>
+
+<figure><img src="/Users/xerxes/note/flink/src/%E7%B1%BB%E5%9E%8B%E7%B3%BB%E7%BB%9F.jpg"/></figure>
+
+<p>Flink 内置了一部分常用的基本类型，对于这些类型，Flink 也内置了它们的TypeInformation，用户一般可以直接使用而不需要额外的说明，Flink 自己可以通过类型推断机制识别出相应的类型。</p>
+
+<p>但是也有例外情况：</p>
+
+<ul>
+	<li>Flink DataStream API 同时支持Java 和Scala，Scala API 许多接口是通过隐式的参数来传递类型信息的，所以如果需要通过Java 调用Scala API，则需要把这些类型信息通过隐式参数传递过去；</li>
+	<li>Java 中对泛型存在类型擦除，如果流的类型本身是一个泛型的话，则可能在擦除之后无法推断出类型信息，这时需要显式地指定</li>
+</ul>
+
+<p>Flink中一般Java 接口采用Tuple 类型来组合多个字段，而Scala 则更经常使用Row 类型或Case Class。相对于Row，Tuple 类型存在两个问题，一个是字段个数不能超过25个，此外所有字段不允许有null值。</p>
+
+<hr />
+
+<h2>Operators</h2>
+
+<p>Operators 将一个或多个DataStreams 转换为新的DataStreams。程序可以将多个transformations 组合为一个复杂的dataflow topologies。</p>
+
+<h3>DataStream Transformations</h3>
+
+<h4>Map</h4>
+
+<h4>FlatMap</h4>
+
+<h3>Physical partitioning</h3>
+
+<h4>Custom partitioning</h4>
+
+<h3>Task chaining and resource groups</h3>
+
+<h3>Windows</h3>
+
+<p>Windows 是处理无限数据流的核心。</p>
+
+</body>
+</html>
+

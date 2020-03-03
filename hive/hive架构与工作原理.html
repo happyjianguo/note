@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>hive架构与工作原理</title>
+	</head>
+<body>
+<h1>hive架构与工作原理</h1>
+
+<p>Hive是基于Hadoop构建的数据仓库分析系统，提供了丰富的sql查询方式来分析存储在Hadoop分布式文件系统中的数据，可以将结构化的数据文件映射为一张数据库表，并提供完整的sql查询功能，将sql转换为MapReduce任务运行。</p>
+
+<hr />
+
+<h2>hive架构原理</h2>
+
+<figure><img src="/Users/xerxes/note/hive/src/hive%E6%9E%B6%E6%9E%84.jpg"/></figure>
+
+<h3>用户接口</h3>
+
+<p>Hive 对外提供了三种服务模式:</p>
+
+<ul>
+	<li>命令行模式（CLI）</li>
+	<li>web模式（WUI）</li>
+	<li>远程服务（Client）</li>
+</ul>
+
+<h3>元数据存储</h3>
+
+<p>Hive将元数据存储在数据库中，如mysql、derby。Hive中的元数据包括表的名字，表的列和分区及其属性，表的属性（是否为外部表等），表的数据所在目录等。</p>
+
+<h3>Driver</h3>
+
+<p>该组件包含：Compiler、Optimizer、Executor。</p>
+
+<h4>Compiler</h4>
+
+<p>Hive的编译器由三部分组成：</p>
+
+<ul>
+	<li>Parser：将hql转换成抽象语法树</li>
+	<li>Semantic Analyzer：将抽象语法树转换成查询块</li>
+	<li>Logic Plan Generator：将查询块转换成逻辑查询计划</li>
+</ul>
+
+<p>整个编译流程如下图：</p>
+
+<figure><img src="/Users/xerxes/note/hive/src/hive%E7%BC%96%E8%AF%91%E6%B5%81%E7%A8%8B.jpg"/></figure>
+
+<ol>
+	<li>Antlr定义SQL的语法规则，完成SQL词法，语法解析，将SQL转化为抽象语法树AST Tree；</li>
+	<li>遍历AST Tree，抽象出查询的基本组成单元QueryBlock；</li>
+	<li>遍历QueryBlock，翻译为执行操作树OperatorTree；</li>
+	<li>逻辑层优化器进行OperatorTree变换，合并不必要的ReduceSinkOperator，减少shuffle数据量；</li>
+	<li>遍历OperatorTree，翻译为hive job任务；</li>
+	<li>物理层优化器进行hive job任务的变换，生成最终的执行计划</li>
+</ol>
+
+<h3>Hadoop</h3>
+
+<p>Hive的数据存储在HDFS中，大部分的查询、计算由MapReduce完成（包含*的查询，比如<code>select * from table</code>不会生成MapRedcue任务）。</p>
+
+<hr />
+
+<h2>hive工作原理</h2>
+
+<figure><img src="/Users/xerxes/note/hive/src/hive%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86.jpg"/></figure>
+
+<ol>
+	<li>用户提交查询等任务给Driver。</li>
+	<li>编译器获得该用户的任务Plan。</li>
+	<li>编译器Compiler根据用户任务去MetaStore中获取需要的Hive的元数据信息。</li>
+	<li>编译器Compiler得到元数据信息，对任务进行编译，先将HiveQL转换为抽象语法树，然后将抽象语法树转换成查询块，将查询块转化为逻辑的查询计划，重写逻辑查询计划，将逻辑计划转化为物理的计划（MapReduce）, 最后选择最佳的策略。</li>
+	<li>将最终的计划提交给Driver。</li>
+	<li>Driver将计划Plan转交给ExecutionEngine去执行，获取元数据信息，提交给JobTracker或者SourceManager执行该任务，任务会直接读取HDFS中文件进行相应的操作。</li>
+	<li>获取执行的结果。</li>
+	<li>取得并返回执行结果。</li>
+</ol>
+
+</body>
+</html>
+

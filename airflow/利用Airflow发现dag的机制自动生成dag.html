@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>利用Airflow发现dag的机制自动生成dag</title>
+	</head>
+<body>
+<h1>利用Airflow发现dag的机制自动生成dag</h1>
+
+<h2>原理</h2>
+
+<p>启动Airflow scheduler服务之后，scheduler会去airflow.cfg中的<code>core.dags_folder</code>中，遍历当前目录下所有文件，根据一些规则进行文件筛选，最后返回文件列表。</p>
+
+<p>拿到文件之后，最终利用<code>importlib.import_module</code>方法导入文件中的模块并遍历，利用<code>isinstance(dag, DAG)</code>判断模块是否是一个dag。</p>
+
+<h2>代码结构</h2>
+
+<figure><img src="/Users/xerxes/note/airflow/src/Airflow%E5%8F%91%E7%8E%B0dag%E7%9A%84%E6%9C%BA%E5%88%B6.jpg"/></figure>
+
+<ol>
+	<li>启动scheduler服务，实例化一个<code>SchedulerJob()</code>；</li>
+	<li>运行<code>SchedulerJob()</code>的父类<code>BaseJob()</code>的<code>run()</code>方法，调用<code>SchedulerJob()._execute()</code>方法；</li>
+	<li>获取<code>core.dags_folder </code>下所有<code>.py</code>文件，将实例化<code>DagFileProcessor()</code>的方法<code>processor_factory()</code>传给<code>DagFileProcessorAgent()</code>，并运行<code>DagFileProcessorAgent()</code>的<code>start()</code>方法；</li>
+	<li>多线程运行<code>DagFileProcessorManager()</code>的<code>start()</code>方法；</li>
+	<li>循环运行<code>DagFileProcessorManager()</code>的<code>heartbeat()</code>方法；</li>
+	<li>用之前的<code>processor_factory()</code>实例化一个<code>DagFileProcessor()</code> ，并运行<code>start()</code>方法；</li>
+	<li>多线程运行<code>DagFileProcessor()</code>的<code>_run_file_processor()</code>方法；</li>
+	<li>新实例化一个<code>SchedulerJob</code>，并运行<code>process_file()</code>方法；</li>
+	<li>实例化<code>models.DagBag()</code>，它会在<code>__init__()</code>中调用<code>collect_dags()</code>，然后在<code>collect_dags()</code>中调用<code>process_file()</code>；</li>
+	<li>从当前文件中生成dag。</li>
+</ol>
+
+<pre><code>mods = []
+m = importlib.import_module(mod_name)
+mods.append(m)
+for m in mods:
+    for dag in list(m.__dict__.values()):
+        if isinstance(dag, DAG):
+            if not dag.full_filepath:
+                dag.full_filepath = filepath
+                if dag.fileloc != filepath and not is_zipfile:
+                    dag.fileloc = filepath
+            try:
+                dag.is_subdag = False
+                self.bag_dag(dag, parent_dag=dag, root_dag=dag)
+                if isinstance(dag._schedule_interval, six.string_types):
+                    croniter(dag._schedule_interval)
+                found_dags.append(dag)
+                found_dags += dag.subdags
+</code></pre>
+
+<h2>自动生成dag</h2>
+
+<p>利用这个机制，就不需要为每一个dag都写一个python脚本，而是动态生成dag。最简单的实现方式是：</p>
+
+<pre><code>def auto_create_dag():
+&nbsp;dag = DAG()
+&nbsp;return dag
+dags = auto_create_dag()
+for dag in dags:
+&nbsp;globals()[dag] = dags[dag]
+</code></pre>
+
+<p>这样就可以将任务逻辑写在其他地方，在此处统一生成dag对象，统一global()出去，scheduler就可以方便的拿到这些dag。</p>
+
+</body>
+</html>
+

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>概述</title>
+	</head>
+<body>
+<h1>概述</h1>
+
+<blockquote>
+<p>Presto是一个基于内存的分布式并行查询执行引擎，针对低延迟和交互式查询分析进行了优化。Presto可以轻松运行查询，甚至无需停机就能从GB级扩展到PB级。</p>
+</blockquote>
+
+<hr />
+
+<h2>特性</h2>
+
+<ul>
+	<li>简单和可扩展的架构</li>
+	<li>可插拔连接器</li>
+	<li>流水线执行：避免不必要的I/O延迟开销</li>
+	<li>用户定义函数：分析师可以创建自定义的函数以轻松迁移</li>
+	<li>向量化的柱状处理</li>
+	<li>多数据源</li>
+	<li>支持sql</li>
+	<li>混合计算</li>
+</ul>
+
+<hr />
+
+<h2>基本概念</h2>
+
+<h3>架构</h3>
+
+<figure><img src="/Users/xerxes/note/presto/src/presto%E6%9E%B6%E6%9E%84.png"/></figure>
+
+<p><strong>Presto查询引擎是一个Master-Slave架构，由一个Coordinator节点，一个Discovery Server节点，多个Worker节点组成，Discovery Server通常内嵌于Coordinator节点中</strong>。</p>
+
+<p>Coordinator节点是管理节点，存在Coordinator服务进程。</p>
+
+<p>Worker节点是工作节点，每个Worker节点都存在一个Worker服务进程。</p>
+
+<p>Worker节点启动后向Discovery Server服务注册，Coordinator从Discovery Server获得可以正常工作的Worker节点。</p>
+
+<h3>服务进程</h3>
+
+<p>Presto集群存在一个<strong>Coordinator</strong>节点和多个<strong>Worker</strong>节点。</p>
+
+<h4>Coordinator</h4>
+
+<p>Coordinator服务进程部署于集群中一个单独的节点上，是整个Presto集群的管理节点。</p>
+
+<p>Coordinator服务进程的作用：</p>
+
+<ul>
+	<li>接收查询请求</li>
+	<li>解析查询语句</li>
+	<li>生成查询执行计划、stage和task并对生成的task进行调度</li>
+	<li>对Worker进行管理</li>
+</ul>
+
+<p>Coordinator是整个Presto集群的master进程，该进程既与Worker进行通信从而获得最新的Worker信息，又与Client进行通信，从而接受查询请求。这些工作都是通过Coordinator上的StatementResource类提供的RESTful服务来完成的。</p>
+
+<h4>Worker</h4>
+
+<p>该服务主要进行数据的处理以及Task的执行。</p>
+
+<p>Worker服务进程每隔一定的时间都会想Coordinator上的RESTful服务发送心跳。当客户端提交一个查询的时候，Coordinator会从当前存活的Worker列表中选择合适的Worker节点去运行Task。</p>
+
+<p>Worker在执行每个Task的时候又会进一步对当前Task读入的每隔Spit进行一系列的操作和处理。</p>
+
+<h3>Presto模型</h3>
+
+<h4>Connector</h4>
+
+<p>Presto通过不同的Connector访问不同的数据源。可以将Connector当作Presto访问各种不同数据源的驱动程序。一般情况下，Presto针对每种数据源都有与之对应的Connector，每种Connector实现了Presto中标准的SPI接口。</p>
+
+<p>需要使用某种Connector访问特定的数据源时，需要在<code>$PRESTO_HOME/etc/catalog</code>中创建配置文件：<code>example.properties</code>，在其中配置属性：<code>connector.name</code>。</p>
+
+<h4>Catalog</h4>
+
+<p>Catalog类似于一个mysql中的一个数据库实例。</p>
+
+<p><code>$PRESTO_HOME/etc/catalog</code>中创建配置文件的名字就是Catalog的名字。</p>
+
+<p>通过使用特定的Connector访问Catalog中指定的数据源，一个Catalog中可以包含多个Schema。</p>
+
+<p>访问Catalog中的某张表，该表的全名总是以Catalog的名字开头，然后时Schema的名字，然后再是表的名字。</p>
+
+<h4>Schema</h4>
+
+<p>Schema类似于mysql中的一个database。</p>
+
+<p>一个Catalog名称和一个Schema名称唯一确定可以查询的一系列表的集合。</p>
+
+<h4>Table</h4>
+
+<p>与传统数据库的表的含义相同。</p>
+
+<h3>查询执行模型</h3>
+
+<figure><img src="/Users/xerxes/note/presto/src/presto%E6%89%A7%E8%A1%8C%E6%9F%A5%E8%AF%A2%E7%9A%84%E6%A8%A1%E5%9E%8B%E5%85%B3%E7%B3%BB.jpg"/></figure>
+
+<p>Presto中一次查询执行被拆解为多个Stage，Stage与Stage之间有依赖关系；</p>
+
+<p>每个Stage内部进一步分解为多个Task，属于每个Stage的Task被均分在每个Worker上并行执行；</p>
+
+<p>每个Task内部分解为多个Driver，每个Driver负责处理一个Split，由一系列前后相连的Operator组成，每个Operator代表对Split的一种操作。</p>
+
+<h4>Statement</h4>
+
+<p>指用户输入的sql语句。Presto支持符合ANSI标准的sql语句。这种语句由子句（Clause）、表达式（Expression）和断言（Predicate）组成。</p>
+
+<p>当Presto执行输入的sql语句时，会根据sql语句生成查询执行计划，进而生成可以执行的查询，而查询代表的是分布到所有的Worker之间执行的实际查询操作。</p>
+
+<h4>Query</h4>
+
+<p>一个查询执行代表可以在Presto集群中运行的查询，</p>
+
+<p>一个查询计划由Stage、Task、Driver、Split、Operator和DataSource组成。</p>
+
+<h4>Stage</h4>
+
+<p>即查询执行阶段。Stage并不会在集群中实际执行，它只是Coordinator用于Query进行管理和建模的逻辑概念。</p>
+
+<p>当Presto运行Query时，Presto将一个Query拆分成具有层级关系的多个Stage，一个Stage就代表查询执行计划的一部分。</p>
+
+<p>通常情况下，Stage之间是树状的层级结构。每个Query都有一个Root Stage（也叫Single Stage）。该Stage用于聚集所有其他Stage的输出数据，并将最终的数据反馈给终端用户。</p>
+
+<p>除了Root Stage和Source Stage，其他Stage都会有输入和输出，都会从上游Stage读取数据，然后将产生结果输出给下游Stage。</p>
+
+<p>Presto一共有四种Stage：</p>
+
+<ul>
+	<li><code>Coordinator_Only</code>：用于执行DDL或者DML语句中最终的表结构创建或者更改；</li>
+	<li>Single：用于聚合子Stage的输出数据，并将最终数据输出给终端用户；</li>
+	<li>Fixed：这种类型的Stage用于接收其子Stage产生的数据并在集群中对这些数据进行分布式的聚合或者分组计算；</li>
+	<li>Source：直接连接数据源，从数据源读取数据，在读取数据的时候该Stage也会根据Presto对查询执行计划的优化完成相关的Predicate PushDown和条件过滤等</li>
+</ul>
+
+<h4>Exchange</h4>
+
+<p>Presto的Stage通过Exchange来相关连接，完成有上下游关系的Stage之间的数据交换。</p>
+
+<p>Presto中两种Exchange：</p>
+
+<ul>
+	<li>Output Buffer：生产数据的Stage通过Output Buffer将数据传送给下游的Stage</li>
+	<li>Exchange Client：消费数据的Stage通过Exchange Client从上游Stage读取数据</li>
+</ul>
+
+<p>如果当前的Stage是Source类型，那么该Stage则是直接通过Source Operator的Operator与相应的Connector交互读取数据。</p>
+
+<h4>Task</h4>
+
+<p>Stage在逻辑上又被分为一系列的Task，这些Task则是需要实际运行在Presto的各个Worker节点上的。</p>
+
+<p>在Presto集群中，一个查询执行被分解成具有层级关系的一系列Stage，一个Stage又被拆分为一系列Task，从而可以并行地执行一个Stage。每个Task处理一个或者多个Split。每个Task都有对应的输入和输出。</p>
+
+<p>一个Task也可以被分解为一个或者多个Driver，从而并行地执行一个Task。</p>
+
+<h4>Driver</h4>
+
+<p>一个Task包含一个或者多个Driver。一个Driver其实就是作用于一个Split的一系列Operator的集合。</p>
+
+<p>因此一个Driver用于处理一个Split，并且生成相应的输出，这些输出由Task收集并且传送给其下游Stage中的一个Task。</p>
+
+<p>一个Driver有一个输入和一个输出。</p>
+
+<h4>Operator</h4>
+
+<p>一个Operator代表对一个Split的一种操作，例如过滤、加权、转换等。</p>
+
+<p>一个Operator一次读取一个Split中的数据，将Operator所代表的计算和操作作用于Split的数据上，并产生输出。</p>
+
+<p>每个Operator均会以Page为最小处理单位分别读取输入数据和产生输出数据。Operator每次只会读取一个Page对象，相应地，每次只会产生一个Page对象。</p>
+
+<h4>Split</h4>
+
+<p>一个Split就是一个数据集中的一个子数据集。</p>
+
+<p>Presto执行一个Query时，首先从Coordinator得到一个表对应的所有Split，然后根据查询执行计划，选择合适的节点运行相应的Task处理Split。</p>
+
+<h4>Page</h4>
+
+<p>Presto中的最小数据单元。一个Page对象包含多个Block对象，而每个Block对象是一个字节数组，存储一个字段的若干行。多个Block横切的一行是真实的一行数据。</p>
+
+<p>一个Page最大1MB，最多16*1024行数据。</p>
+
+<figure><img src="/Users/xerxes/note/presto/src/presto%E7%9A%84page%E7%BB%93%E6%9E%84.jpg"/></figure>
+
+<h3>查询执行流程</h3>
+
+<figure><img src="/Users/xerxes/note/presto/src/presto%E6%9F%A5%E8%AF%A2%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B.jpg"/></figure>
+
+<ol>
+	<li>客户端通过HTTP协议发送一个查询语句给Presto集群的Coordinator；</li>
+	<li>Coordinator接收到语句进行解析，生成查询执行计划，根据查询执行计划依次生成SqlQueryExecution、SqlStageExecution、HttpRemoteTask；</li>
+	<li>Coordinator将每个Task都分发到其所需要处理的数据所在的Worker上进行执行（这个过程通过HttpRemoteTask中的HttpClient将创建或者更新Task的请求发送给数据所在节点上TaskResource所提供的RestFul接口，TaskResource接收到请求之后最终会在对应的Worker上启动一个SqlTaskExecution对象或者更新对应的SqlTaskExecution对象需要处理的Split）；</li>
+	<li>执行处于上游的Source Stage中的Task，这些Task通过各种Connector从相应数据源中读取所需的数据；</li>
+	<li>处于下游Stage的Task读取上游Stage产生的输出结果，并在该Stage每个Task所在的Worker的内存中进行后续的计算和处理；</li>
+	<li>Coordinator从分发Task之后，就会一直持续不断的从Single Stage中的Task获取计算结果，并将计算结果缓存到Buffer中，知道所有计算结束；</li>
+	<li>Client从提交查询语句之后，就会不停的从Coordinator中获取本次查询的计算结果，知道获得所有计算结果</li>
+</ol>
+
+<hr />
+
+<h3>Presto实现低延迟查询</h3>
+
+<p>Presto实现低延迟查询主要有几个关键点：</p>
+
+<ul>
+	<li>完全基于内存的并行计算</li>
+	<li>流水线</li>
+	<li>本地化计算</li>
+	<li>动态编译执行计划</li>
+	<li>小心使用内存和数据结构</li>
+	<li>类BlinkDB的近似查询</li>
+	<li>GC控制</li>
+</ul>
+
+<h5>完全基于内存的并行计算</h5>
+
+<p><strong>Presto sql的执行流程</strong>：</p>
+
+<ol>
+	<li>cli通过HTTP协议提交SQL查询之后，查询请求封装成一个SqlQueryExecution对象交给Coordinator的SqlQueryManager#queryExecutor线程池去执行</li>
+	<li>每个SqlQueryExecution线程（图中Q-X线程）启动后对查询请求的SQL进行语法解析和优化并最终生成多个Stage的SqlStageExecution任务，每个SqlStageExecution任务仍然交给同样的线程池去执行</li>
+	<li>个SqlStageExecution线程（图中S-X线程）启动后每个Stage的任务按PlanDistribution属性构造一个或者多个RemoteTask通过HTTP协议分配给远端的Worker节点执行</li>
+	<li>Worker节点接收到RemoteTask请求之后，启动一个SqlTaskExecution线程（图中T-X线程）将这个任务的每个Split包装成一个PrioritizedSplitRunner任务（图中SR-X）交给Worker节点的TaskExecutor#executor线程池去执行</li>
+</ol>
+
+<figure><img src="/Users/xerxes/note/presto/src/%E6%9F%A5%E8%AF%A2%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B.png"/></figure>
+
+<p>上面的执行计划实际执行效果如下图所示。</p>
+
+<ol>
+	<li>Coordinator通过HTTP协议调用Worker节点的&nbsp;/v1/task 接口将执行计划分配给所有Worker节点（图中蓝色箭头）</li>
+	<li>SubPlan1的每个节点读取一个Split的数据并过滤后将数据分发给每个SubPlan0节点进行Join操作和Partial Aggr操作</li>
+	<li>SubPlan1的每个节点计算完成后按GroupBy Key的Hash值将数据分发到不同的SubPlan2节点</li>
+	<li>所有SubPlan2节点计算完成后将数据分发到SubPlan3节点</li>
+	<li>SubPlan3节点计算完成后通知Coordinator结束查询，并将数据发送给Coordinator</li>
+</ol>
+
+<figure><img src="/Users/xerxes/note/presto/src/%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E8%AE%A1%E7%AE%97%E6%B5%81%E7%A8%8B.png"/></figure>
+
+<p><strong>源数据的并行读取</strong></p>
+
+<p>在上面的执行计划中SubPlan1和SubPlan0都是Source节点，其实它们读取HDFS文件数据的方式就是调用的HDFS InputSplit API，然后每个InputSplit分配一个Worker节点去执行，每个Worker节点分配的InputSplit数目上限是参数可配置的，Config中的query.max-pending-splits-per-node参数配置，默认是100。</p>
+
+<p><strong>分布式的Hash聚合</strong></p>
+
+<p>上面的执行计划在SubPlan0中会进行一次Partial的聚合计算，计算每个Worker节点读取的部分数据的部分聚合结果，然后SubPlan0的输出会按照group by字段的Hash值分配不同的计算节点，最后SubPlan3合并所有结果并输出</p>
+
+<h5>流水线</h5>
+
+<p><strong>数据模型</strong></p>
+
+<p>Presto中处理的最小数据单元是一个Page对象，Page对象的数据结构如下图所示。一个Page对象包含多个Block对象，每个Block对象是一个字节数组，存储一个字段的若干行。多个Block横切的一行是真实的一行数据。一个Page最大1MB，最多16*1024行数据。</p>
+
+<figure><img src="/Users/xerxes/note/presto/src/%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B.png"/></figure>
+
+<p><strong>节点内部流水线计算</strong></p>
+
+<p>下图是一个Worker节点内部的计算流程图，左侧是任务的执行流程图。Worker节点将最细粒度的任务封装成一个PrioritizedSplitRunner对象，放入pending split优先级队列中。每个Worker节点启动一定数目的线程进行计算，线程数task.shard.max-threads=availableProcessors() * 4，在config中配置。每个空闲的线程从队列中取出一个PrioritizedSplitRunner对象执行，如果执行完成一个周期，超过最大执行时间1秒钟，判断任务是否执行完成，如果完成，从allSplits队列中删除，如果没有，则放回pendingSplits队列中。每个任务的执行流程如下图右侧，依次遍历所有Operator，尝试从上一个Operator取一个Page对象，如果取得的Page不为空，交给下一个Operator执行。</p>
+
+<figure><img src="/Users/xerxes/note/presto/src/%E8%8A%82%E7%82%B9%E5%86%85%E9%83%A8%E6%B5%81%E6%B0%B4%E7%BA%BF%E8%AE%A1%E7%AE%97.png"/></figure>
+
+<p><strong>节点间流水线计算</strong></p>
+
+<p>下图是ExchangeOperator的执行流程图，ExchangeOperator为每一个Split启动一个HttpPageBufferClient对象，主动向上一个Stage的Worker节点拉数据，数据的最小单位也是一个Page对象，取到数据后放入Pages队列中。</p>
+
+<figure><img src="/Users/xerxes/note/presto/src/%E8%8A%82%E7%82%B9%E9%97%B4%E6%B5%81%E6%B0%B4%E7%BA%BF%E8%AE%A1%E7%AE%97.png"/></figure>
+
+<h5>本地化计算</h5>
+
+<p>Presto在选择Source任务计算节点的时候，对于每一个Split，按下面的策略选择一些minCandidates</p>
+
+<ol>
+	<li>优先选择与Split同一个Host的Worker节点</li>
+	<li>如果节点不够优先选择与Split同一个Rack的Worker节点</li>
+	<li>如果节点还不够随机选择其他Rack的节点</li>
+</ol>
+
+<p>对于所有Candidate节点，选择assignedSplits最少的节点。</p>
+
+</body>
+</html>
+

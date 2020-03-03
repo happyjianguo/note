@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Kafka简介</title>
+	</head>
+<body>
+<h1>Kafka简介</h1>
+
+<hr />
+
+<h2>应用场景</h2>
+
+<h3>消息中间件</h3>
+
+<p>在应用系统中将Kafka作为消息中间件，实现消息队列和消息的发布/订阅，在某些场景下，性能会超越RabbitMQ、ActiveMQ等传统的消息中间件</p>
+
+<h3>数据总线</h3>
+
+<p>Kafka也被用作系统中的数据总线，将其接入多个子系统中，子系统会将产生的数据发送到Kafka中保存，之后流转到目的系统中</p>
+
+<h3>日志收集</h3>
+
+<p>Kafka还可以用作日志收集中心，多个系统产生的日志统一收集到Kafka中，然后由数据分析平台进行统一处理。日志会被Kafka持久化到磁盘，所以同时支持离线数据处理和实时数据处理</p>
+
+<h3>流处理</h3>
+
+<p>通过使用流式处理框架，用户可以编写程序操作Kafka的消息，比如计算度量指标，为其他程序有效的处理消息分区，或者对来自多个数据源的消息进行转换。</p>
+
+<hr />
+
+<h2>主要特性</h2>
+
+<h3>消息分区 </h3>
+
+<p>Kafka支持消息分区，每个分区中的消息保证顺序传输，而分区之间则可以并发操作，这样就提高了Kafka的并发能力。Kafka支持在线增加分区，支持在线水平扩展</p>
+
+<h3>分区副本 </h3>
+
+<p><strong>Kafka支持为每个分区创建多个副本，其中只会有一个Leader副本负责读写，其他副本只负责与Leader副本进行同步</strong>，这种方式提高了数据的容灾能力。Kafka会将副本均匀地分布在集群中服务器上，实现性能最大化。Follower副本可以批量从Leader副本复制消息，加快网络I/O。Follower副本在更新消息时是批量写磁盘，加速了磁盘的I/O。</p>
+
+<h3>数据持久化</h3>
+
+<p>在分布式系统中，各个组件通过网络连接，当数据在两个组件之间进行传递时，传输过程可能会失败。</p>
+
+<p><strong>Kafka把数据以消息的形式持久化到磁盘，即使Kafka出现宕机，也能保证数据不丢失</strong>。</p>
+
+<p>为了避免磁盘上的数据不断增长，Kafka提供了日志清理、日志压缩等功能，对过时的、已经处理完成的数据进行清除。</p>
+
+<h3>高吞吐/低延时</h3>
+
+<p>Kafka依靠四点达到了高吞吐、低延时的设计目标：</p>
+
+<ul>
+	<li>大量使用页缓存，内存操作速度快且命中率高；</li>
+	<li>Kafka不直接参与物理I/O操作，而是交给OS来完成；</li>
+	<li>采用追加写入的方式，避免了随机I/O；</li>
+	<li>使用以sendfile为代表的零拷贝技术加强网络间的数据传输效率</li>
+</ul>
+
+<h4>producer端</h4>
+
+<p>Kafka虽然会持久化所有的数据到磁盘，但本质上<strong>每次写入操作只是把数据写入到操作系统的页缓存（page cache）中，然后由操作系统决定什么时候把页缓存中的数据写回磁盘。这种做法有三种优势：
+</strong></p>
+
+<ul>
+	<li>操作系统页缓存是在内存中分配的，消息写入速度快；</li>
+	<li>Kafka不必直接与底层的文件系统打交道，所有I/O操作都交由操作系统来处理；</li>
+	<li>Kafka写入操作采用追加写入（append）的方式，即只能在日志文件末尾追加写入新的消息，且不允许修改已写入的消息，属于典型的顺序I/O，从而避免了随机读写磁盘导致的性能瓶颈</li>
+</ul>
+
+<h4>consumer端</h4>
+
+<p>Kafka在读取消息时会首先尝试从OS的页缓存中读取，如果命中便把消息经页缓存直接发送到网络的Socket上。这个过程就是利用Linux的sendfile系统调用做到的，而这种技术就是大名鼎鼎的零拷贝（Zero Copy）技术。</p>
+
+<p>Kafka由于大量使用页缓存，因此读取消息时大部分消息很有可能依然保存在页缓存中，因此可以直接命中缓存，不用穿透到底层的物理磁盘上获取消息，从而极大提升了消息读取的吞吐量。</p>
+
+<h3>解耦</h3>
+
+<p>将Kafka作为整个系统的中枢，负责在任意两个系统之间传递数据。</p>
+
+<h3>扩展与容灾</h3>
+
+<p><strong>Kafka的每个Topic都可以分为多个Partition，每个Partition都有多个Replica，实现消息冗余备份</strong>。</p>
+
+<p>每个分区中的消息是不同的，这类似于数据库中水平切分的思想，提高了并发读写能力。</p>
+
+<p>而同一分区的不同副本中保存的是相同的消息，副本之间是一主多从的关系，其中Leader副本负责处理读写请求，Follower副本则只和Leader副本进行消息同步。当Leader副本出现故障时，则从Follower副本中重新选举Leader副本对外提供服务。</p>
+
+<p><strong>通过提高分区的数量，就可以实现水平扩展；通过提高副本的数量，提高容灾能力</strong>。</p>
+
+<p>Kafka在Consumer端也有容灾能力的设计。<strong>Consumer使用pull方式从服务端拉取数据，并且在Consumer端保存消费的具体位置</strong>，当消费者宕机后恢复上线，可以根据自己保存的消费位置重新拉取需要的消息进行消费。</p>
+
+<p>Kafka还支持Consumer的水平扩展能力。<strong>当Kafka服务端通过增加分区数量进行水平扩展后，可以向Consumer Group中增加新的Consumer来提高整个Consumer Group的消费能力</strong>。当Consumer Group中的一个Consumer出现故障，会通过Rebalance操作将下线Consumer负责处理的分区分配给其他Consumer。当下线Consumer重新上线加入Consumer Group时，会再次进行Rebalance操作，重新分配分区。<strong>一个Consumer Group可以订阅很多Topic，每个Consumer可以同时处理多个分区，一个分区只能分配给一个Consumer</strong>。</p>
+
+<h3>顺序保证</h3>
+
+<p><strong>Kafka保证一个Partition内消息的有序性，但不保证多个Partition之间的数据有序性</strong>。</p>
+
+<h3>缓冲&amp;峰值处理能力</h3>
+
+<p>Kafka能够使关键组件顶住突发的访问压力，而不会因为突发的峰值请求而使系统完全崩溃不可用。</p>
+
+<h3>异步通信</h3>
+
+<p>Kafka为系统提供了异步处理能力。两个系统需要通过网络进行数据交换，其中一端可以把一个消息放入Kafka中后立即返回继续执行其他任务，不需要等待对端的相应。</p>
+
+<hr />
+
+<h2>Kafka核心概念</h2>
+
+<h3>生产者Producer</h3>
+
+<p>生产者的主要工作是生产消息，并将消息按照一定的规则推送到Topic的分区中。</p>
+
+<h3>消费者Consumer</h3>
+
+<p>消费者的主要工作是从Topic中拉取消息，并对消息进行消费。</p>
+
+<p>某个消费者消费到Partition的offset，是Consumer自己维护的。</p>
+
+<h3>消费者组Consumer Group</h3>
+
+<p>多个Consumer组成一个Consumer Group，一个Consumer只能属于一个Consumer Group。</p>
+
+<p><strong>Consumer Group保证订阅的Topic的每个分区只能被分配给这个Group中 的一个消费者处理</strong>。</p>
+
+<p>如果不同Consumer Group订阅了同一个Topic，Group之间批次不干扰。如果要实现一个消息可以被多个Consumer同时消费，要将每个消费者放入单独的Consumer Group；如果要实现一个消息只能被一个Consumer消费，则将所有的Consumer放入一个Consumer Group。</p>
+
+<p><strong>Kafka还通过Consumer Group实现了消费者的水平扩展和故障转移</strong>。</p>
+
+<ul>
+	<li>当一个Consumer的处理能力不足以处理多个Partition，通过向Consumer Group添加消费者，出发Rebalance操作重新分配Partition与Consumer的对应关系，从而实现水平扩展</li>
+	<li>当一个Consumer宕机时，Consumer Group自动重新分配分区</li>
+</ul>
+
+<p>Consumer Group中的Consumer的数量并不是越多越好，当Consumer数量超过分区的数量时，会有消费者分配不到分区。</p>
+
+<h3>消息</h3>
+
+<p>消息是Kafka中最基本的数据单元。消息由一串子节构成，其中主要有key和value构成，key和value也都是byte数组。</p>
+
+<p>Key的主要作用是根据一定的策略，将此消息路由到指定的分区中，这样就可以保证包含同一key的消息全部写入同一分区中。key可以是null。</p>
+
+<p>消息的真正有效负载是value部分的数据。为了提高网络和存储的利用率，<strong>生产者会批量发送消息到Kafka，并在发送之前对消息进行压缩</strong>。</p>
+
+<h3>Topic、partition、Log、Segment</h3>
+
+<p>Topic是用于存储消息的逻辑概念，可以看作一个消息集合。每个Topic可以有多个生产者向其中推送消息，可以有任意多个消费者消息其中的消息。</p>
+
+<p><strong>每个Topic可以划分成多个分区</strong>，同一个Topic下的不同分区包含的消息是不同的。</p>
+
+<p><strong>每个消息在被添加到分区时都会被分配一个offset</strong>，它是消息在此分区中的唯一编号，Kafka通过offset保证消息在分区内的顺序。</p>
+
+<p><strong>同一个Topic的不同分区会分配在不同的Broker上</strong>。分区是Kafka水平扩展性的基础，通过增加服务器并在其上分配Partition的方式来增加Kafka的并行处理能力。</p>
+
+<p><strong>分区在逻辑上对应着一个Log，当生产者将消息写入分区时，实际上是写入到了分区对应的Log</strong>。Log是一个逻辑概念，可以对应到磁盘上的一个文件夹。<strong>Log由多个Segment组成，每个Segment对应一个日志文件和索引文件</strong>。在面对海量数据时，为避免出现超大文件，每个日志文件的大小有限制，超出限制就创建新的Segment。</p>
+
+<p>因为<strong>Kafka采用顺序I/O，所以只会向最新的Segment追加数据</strong>。为了权衡文件大小、索引速度、占用内存大小等多方面因素，<strong>索引文件采用稀疏索引的方式</strong>，大小并不会很大，在运行时会将其内容映射到内存，提高索引速度。</p>
+
+<h3>副本</h3>
+
+<p><strong>Kafka对消息进行了冗余备份，每个Partition可以有多个副本</strong>。</p>
+
+<p>每个分区的副本集合中，都会选举出一个副本作为Leader副本，Kafka在不同的场景下采用不同的选举策略。<strong>所有读写请求都由Leader副本处理，Follower副本仅仅从Leader副本处把数据拉取到本地，同步更新到自己的Log中</strong>。通常同一分区的多个副本会被分配到不同的Broker上。</p>
+
+<h3>保留策略（Retention Policy）、日志压缩（Log Compaction）</h3>
+
+<p><strong>无论消费者是否已经消费了消息，Kafka都会一直保存这些消息，然后根据保留策略周期性地删除旧消息</strong>。保留策略有两种：</p>
+
+<ul>
+	<li>根据消息保留的时间，当消息在Kafka中保存的时间超过了指定时间，就可以被删除</li>
+	<li>根据Topic存储的数据大小，当Topic所占的日志文件大小大于一个阈值，则可以开始删除最旧的消息</li>
+</ul>
+
+<p>Kafka会启动一个后台线程，定期检查是否存在可以删除的消息。保留策略的配置非常灵活，可以有全局的配置，也可以针对Topic进行配置覆盖全局配置。</p>
+
+<p>很多场景下消息的key与value的值之间的对应关系是不断变化的，消费者只关心key对应的最新value值。<strong>Kafka的日志压缩功能会在后台启动一个线程，定期将相同key的消息进行合并，只保留最新的value值</strong>。</p>
+
+<figure><img src="/Users/xerxes/note/kafka/src/Kafka%E6%97%A5%E5%BF%97%E5%8E%8B%E7%BC%A9.jpg"/></figure>
+
+<h3>Broker</h3>
+
+<p>一个单独的Kafka server就是一个Broker。Broker的主要工作就是接收生产者发过来的消息，分配offset，保存到磁盘；同时接收消费者、其他Broker的请求，根据请求类型进行相应处理并返回响应。</p>
+
+<h3>Cluster、Controller</h3>
+
+<p><strong>多个Broker可以做成一个Cluster对外提供服务，每个Cluster当中会选举出一个Broker来担任Controller，Controller是Kafka集群的指挥中心，而其他Broker则听从Controller指挥实现相应的功能</strong>。</p>
+
+<p>Controller负责将分区分配给broker、管理分区的状态、每个分区的副本状态、监听ZooKeeper中数据的变化等工作。</p>
+
+<p>Controller也是一主多从的实现，所有Broker都会监听Controller Leader的状态，当Leader Controller出现故障时重新选举Controller Leader。</p>
+
+<h3>ISR集合</h3>
+
+<p>ISR（In-Sync Replica）集合表示的是<strong>目前可用且消息量与Leader相差不多的副本集合</strong>。</p>
+
+<p>只有这个集合中的replica才能被选举为leader，也只有该集合中所有replica都接收到了同一条消息，Kafka才会将该消息置为“已提交”状态，即认为该消息发送成功。</p>
+
+<p>Kafka承若只要这个集合中至少存在一个replica，那些“已提交”状态的消息就不会丢失。</p>
+
+<p>ISR集合中的副本必须满足两个条件：</p>
+
+<ul>
+	<li>副本所在节点必须维持着与ZooKeeper的连接</li>
+	<li>副本最后一条消息的offset与Leader副本的最后一条消息的offset之间的差值不能超出指定的阈值</li>
+</ul>
+
+<p>每个分区的Leader副本都会维护此分区的ISR集合。写请求首先由Leader副本处理，之后Follower副本会从Leader上拉取写入的消息，这个过程有延迟，导致Follower副本中保存的消息略少于Leader副本。</p>
+
+<p>当落后到一定程度时，Kafka会将这些replica移出ISR；当replica重新追上leader的进度时，Kafka会将这些replica加回到ISR。</p>
+
+<h3>HW、LEO</h3>
+
+<p>HW（HighWatermark）和LEO（Log End Offset）与上面的ISR集合紧密相关。</p>
+
+<p><strong> HW也是由Leader副本管理的 。HW标记了一个特殊的offset，当消费者处理消息的时候，只能拉取到HW之前的消息</strong>，HW之后的消息对消费者来说是不可见的。与ISR集合类似。<strong>当ISR集合中全部的Follower副本都拉取HW指定消息进行同步后，Leader副本会递增HW的值</strong>。</p>
+
+<p><strong>LEO是所有的副本都会有的一个offset标记，它指向追加到当前副本的最后一个消息的offset</strong>。当生产者向Leader副本追加消息的时候，Leader副本的LEO标记会递增；当Follower副本成功从Leader副本拉取消息并更新到本地的时候，Follower副本的LEO增加。</p>
+
+<h3>ISR集合、HW和LEO如何协调工作</h3>
+
+<ol>
+	<li>Producer向此Partition推送消息</li>
+	<li>Leader副本将消息追加到Log，并递增LEO</li>
+	<li>Follower副本从Leader拉取消息进行同步</li>
+	<li>Follower副本将拉取到的消息更新到本地Log，并递增其LEO</li>
+	<li>当ISR集合中所有副本都完成了offset=x的消息的同步，Leader副本递增HW</li>
+	<li>至此offset=x的消息对生产者可见</li>
+</ol>
+
+<h3>总结</h3>
+
+<figure><img src="/Users/xerxes/note/kafka/src/Kafka%E7%94%9F%E4%BA%A7%E6%B6%88%E8%B4%B9.jpg"/></figure>
+
+<ol>
+	<li>生产者根据业务逻辑产生消息，根据路由规则将消息发送到指定分区的Leader副本所在的Broker；</li>
+	<li>Kafka server收到消息，将消息追加到Log中保存；</li>
+	<li>Follower副本与Leader副本进行同步，当ISR集合中所有副本都完成了此消息的同步，Leader副本的HW增加，并向生产者返回响应</li>
+</ol>
+
+</body>
+</html>
+

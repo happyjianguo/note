@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>explain输出字段解析</title>
+	</head>
+<body>
+<h1>explain输出字段解析</h1>
+
+<h2><code>id</code></h2>
+
+<p>执行编号，标识select所属的行。如果在语句中没子查询或关联查询，只有唯一的select，每行都将显示1。否则，内层的select语句一般会顺序编号，对应于其在原始语句中的位置。</p>
+
+<h2><code>select_type</code></h2>
+
+<p>表示查询的类型，显示了对应行是简单还是复杂select。</p>
+
+<ul>
+	<li><code>simple</code>：简单子查询，不包含子查询和union</li>
+	<li><code>primary</code>：包含union或者子查询，最外层的表标记为primary</li>
+	<li><code>subquery</code>：包含在select列表中的子查询的表</li>
+	<li><code>derived</code>：派生表，位于sql语句中from子句里面。5.7之前的处理是对derived table进行Materialize，生成一个临时表保存derived table的结果，然后利用临时表来协助完成其他父查询的操作；5.7之后允许将符合条件的derived table中的表和父查询的表合并进行直接join</li>
+	<li><code>union</code>：位于union中第二个及其以后的子查询被标记为union，第一个就被标记为primary如果是union位于from中则标记为derived</li>
+	<li><code>union result</code>：用来从匿名临时表里检索结果的select被标记为union result</li>
+	<li><code>dependent union</code>：首先需要满足UNION的条件，及UNION中第二个以及后面的SELECT语句，同时该语句依赖外部的查询</li>
+	<li><code>dependent subquery</code>：和DEPENDENT UNION相对UNION一样</li>
+</ul>
+
+<h2><code>table</code></h2>
+
+<p>显示了对应行正在访问的表。可以从这一列中从上往下观察mysql的关联优化器为查询选择的关联顺序。</p>
+
+<p>如以下查询语句中mysql选择的关联顺序不同于语句中指定的顺序：</p>
+
+<figure><img src="/Users/xerxes/note/MYSQL/src/explain%5C%20table%E5%88%97%E7%A4%BA%E4%BE%8B.jpg"/></figure>
+
+<p>这是由于mysql的查询执行计划总是<strong>左侧深度优先树</strong>。如果把这个计划放倒，就能按顺序读出叶子结点，也就对应explain中的行：</p>
+
+<figure><img src="/Users/xerxes/note/MYSQL/src/%E6%9F%A5%E8%AF%A2%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92%E4%B8%8Eexplain%E8%A1%8C%E5%AF%B9%E5%BA%94.jpg"/></figure>
+
+<h2><code>type</code></h2>
+
+<p>type显示的是访问类型，是较为重要的一个指标，结果值从好到坏依次是：<code>system &gt; const &gt; eq_ref &gt; ref &gt; fulltext &gt; ref_or_null &gt; index_merge &gt; unique_subquery &gt; index_subquery &gt; range &gt; index &gt; ALL</code>，一般来说，得保证查询至少达到range级别，最好能达到ref。</p>
+
+<ul>
+	<li><code>all</code>：最坏的情况,全表扫描</li>
+	<li><code>index</code>：和全表扫描一样。只是扫描表的时候按照索引次序进行而不是行。主要优点就是避免了排序, 但是开销仍然非常大</li>
+	<li><code>range</code>：范围扫描，一个有限制的索引扫描。key 列显示使用了哪个索引。当使用=、 &lt;&gt;、&gt;、&gt;=、&lt;、&lt;=、IS NULL、&lt;=&gt;、BETWEEN 或者 IN 操作符,用常量比较关键字列时,可以使用 range</li>
+	<li><code>ref</code>：一种索引访问，它返回所有匹配某个单个值的行。此类索引访问只有当使用非唯一性索引或唯一性索引非唯一性前缀时才会发生。这个类型跟<code>eq_ref</code>不同的是，它用在关联操作只使用了索引的最左前缀，或者索引不是UNIQUE和PRIMARY KEY。ref可以用于使用=或&lt;=&gt;操作符的带索引的列</li>
+	<li><code>eq_ref</code>：最多只返回一条符合条件的记录。使用唯一性索引或主键查找时会发生 （高效）</li>
+	<li><code>const</code>：当确定最多只会有一行匹配的时候，MySQL优化器会在查询前读取它而且只读取一次，因此非常快。当主键放入where子句时，mysql把这个查询转为一个常量（高效）</li>
+	<li><code>system</code>：这是const连接类型的一种特例，表仅有一行满足条件</li>
+	<li><code>null</code>：意味说mysql能在优化阶段分解查询语句，在执行阶段甚至用不到访问表或索引（高效）</li>
+</ul>
+
+<h2><code>possible_keys</code></h2>
+
+<p>显示查询使用了哪些索引，表示该索引可以进行高效地查找，但是列出来的索引对于后续优化过程可能是没有用的。</p>
+
+<h2><code>key</code></h2>
+
+<p>key列显示MySQL实际决定使用的键（索引）。</p>
+
+<p>如果没有选择索引，键是NULL。要想强制MySQL使用或忽视<code>possible_keys</code>列中的索引，在查询中使用FORCE INDEX、USE INDEX或者IGNORE INDEX。</p>
+
+<p><code>possible_key</code>表示哪一个索引能有助于高效地进行查找，而<code>key</code>表示的是优化采用哪一个索引可以最小化查询成本。</p>
+
+<h2><code>key_len</code></h2>
+
+<p><code>key_len</code>列显示mysql在索引里使用的字节数。</p>
+
+<p><code>key_len</code>显示了在索引字段中可能的最大长度，而不是表中数据使用的实际字节数。</p>
+
+<h2><code>ref</code></h2>
+
+<p>ref列显示了在<code>key</code>列记录的索引中查找值所用的列或常量。</p>
+
+<h2><code>rows</code></h2>
+
+<p>rows列显示了mysql估计为了找到所需的行要读取的行数。</p>
+
+<p>这个数字是内嵌循环关联计划里的循环数目，不是mysql认为它最重要从表里读取出来的行数。</p>
+
+<h2><code>extra</code></h2>
+
+<p>显示MySQL在查询过程中的一些详细信息，MySQL查询优化器执行查询的过程中对查询计划的重要补充信息。</p>
+
+<ul>
+	<li>using index：表示mysql将使用覆盖索引，避免访问表；</li>
+	<li>using where：意味着mysql服务器将在存储引擎检索行后再进行过滤。许多where条件里涉及索引的列，当读取索引时能被存储引擎检验；</li>
+	<li>using temporary：意味着mysql在对查询结果排序时会使用一个临时表；</li>
+	<li>using filesort：意味着mysql会对结果使用一个外部索引排序，而不是按索引次序从表里读取行；</li>
+	<li>range checked for each record：意味着没有好用的索引，新的索引将在联接的每一行上重新估算</li>
+</ul>
+
+</body>
+</html>
+

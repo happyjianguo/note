@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>redis简介</title>
+	</head>
+<body>
+<h1>redis简介</h1>
+
+<hr />
+
+<h3>特性</h3>
+
+<h5>持久化</h5>
+
+<p>Redis拥有两种不同形式的持久化方法，它们都可以用小而紧凑的格式将a在内存中的数据写入磁盘：</p>
+
+<ul>
+	<li>时间点转储（point-in-time dump）：既可以在“指定时间段内有指定数量的写操作执行”这一条件被满足时执行，也可以通过调用两条转储到磁盘（dump-to-disk）命令中的任何一条来执行</li>
+	<li>将所有修改了数据库的命令都写入一个只追加（append-only）文件中，用户可以根据数据的重要程度，将只追加写入设置为从不同步（sync）、每秒同步一次或者每写入一个命令就同步一次</li>
+</ul>
+
+<h5>主从复制</h5>
+
+<p>执行复制的从服务器会连接上主服务器，接收主服务器发送的整个数据库的初始副本；之后主服务器执行的写命令都会被发送给所有连接着的从服务器去执行，从而实时地更新从服务器的数据集。</p>
+
+<p>因为从服务器包含的数据会不断地进行更新，所以客户端可以向任意一个从服务器发送读请求。</p>
+
+<h5>性能</h5>
+
+<p>Redis的list和set允许用户直接添加或者删除元素。</p>
+
+<p>Redis的用户可以直接使用原子的INCR命令及其变种来计算聚合数据，并且因为redis将数据存储在内存中，而且发送给redis的命令请求不需要经过典型的查询分析器或者查询优化器，所以对redis存储的数据执行随机写的速度很快。</p>
+
+<hr />
+
+<h3>数据结构</h3>
+
+<p>Redis可以存储键与五种不同数据结构类型之间的映射，分别是：string，list，set，hash，zset。</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/redis%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84.jpg"/></figure>
+
+<h5>字符串</h5>
+
+<p>字符串拥有一些和其他键值存储相似的命令如GET、SET和DEL。</p>
+
+<p>常见命令：</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/%E5%AD%97%E7%AC%A6%E4%B8%B2%E5%91%BD%E4%BB%A4.jpg"/></figure>
+
+<h5>列表</h5>
+
+<p>一个列表结构可以有序的存储多个字符串。</p>
+
+<p>常见命令：</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/%E5%88%97%E8%A1%A8%E5%91%BD%E4%BB%A4.jpg"/></figure>
+
+<h5>集合</h5>
+
+<p>集合通过散列表来保证自己存储的每个字符串都是不相同的（散列表中只有键，没有与键相关联的值）。</p>
+
+<p>常见命令：</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/%E9%9B%86%E5%90%88%E5%91%BD%E4%BB%A4.jpg"/></figure>
+
+<h5>散列</h5>
+
+<p>Redis的散列可以存储多个键值对之间的映射。可以将redis的散列看作是文档数据库里面的文档。</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/redis%E7%9A%84%E6%95%A3%E5%88%97.jpg"/></figure>
+
+<p>常见命令：</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/%E6%95%A3%E5%88%97%E5%91%BD%E4%BB%A4.jpg"/></figure>
+
+<h5>有序集合</h5>
+
+<p>有序集合和散列一样，都用于存储键值对。有序集合的键被称为成员，每个成员都是各不相同的。有序集合的值被称为分值，必须为浮点数。</p>
+
+<p>有序集合是redis里面唯一一个既可以根据成员访问元素，又可以根据分值和分值的排列顺序访问元素的结构。</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/redis%E6%9C%89%E5%BA%8F%E9%9B%86%E5%90%88.jpg"/></figure>
+
+<p>常见命令：</p>
+
+<figure><img src="/Users/xerxes/note/redis/src/%E6%9C%89%E5%BA%8F%E9%9B%86%E5%90%88%E5%91%BD%E4%BB%A4.jpg"/></figure>
+
+</body>
+</html>
+

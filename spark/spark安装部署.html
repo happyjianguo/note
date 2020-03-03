@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>spark安装部署</title>
+	</head>
+<body>
+<h1>spark安装部署</h1>
+
+<h3>scala安装</h3>
+
+<p>安装命令：<code>brew install scala</code></p>
+
+<p>安装位置：<code>/usr/local/bin/scala</code></p>
+
+<h3>spark安装</h3>
+
+<h6>下载spark</h6>
+
+<p><a href="http://spark.apache.org/downloads.html">http://spark.apache.org/downloads.html</a></p>
+
+<p>下载后解压，安装位置：<code>/Users/xerxes/spark/</code></p>
+
+<h6>配置环境变量</h6>
+
+<pre><code>export SPARK_HOME=/Users/xerxes/spark
+export PATH=$PATH:$SPARK_HOME/bin
+</code></pre>
+
+<h6>修改配置文件</h6>
+
+<pre><code>cd /Users/xerxes/spark/conf
+cp spark-env.sh.template spark-env.sh
+vim spark-env.sh
+</code></pre>
+
+<p>添加：</p>
+
+<pre><code>export SCALA_HOME=/usr/local/Cellar/scala/2.13.1
+export SPARK_MASTER_IP=localhost
+export SPARK_WORKER_MEMORY=4G
+</code></pre>
+
+<h3>安装livy</h3>
+
+<h6>下载livy</h6>
+
+<p><a href="https://www.apache.org/dyn/closer.lua/incubator/livy/0.6.0-incubating/apache-livy-0.6.0-incubating-bin.zip"> https://www.apache.org/dyn/closer.lua/incubator/livy/0.6.0-incubating/apache-livy-0.6.0-incubating-bin.zip </a></p>
+
+<p>下载后解压，安装位置：<code>/Users/xerxes/spark/livy</code></p>
+
+<h6>修改配置文件</h6>
+
+<ol>
+	<li>livy.conf</li>
+	<li>livy-env.sh</li>
+</ol>
+
+<h6>启动livy</h6>
+
+<pre><code>bin/livy-server start</code></pre>
+
+</body>
+</html>
+

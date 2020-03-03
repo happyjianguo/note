@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>网络分层</title>
+	</head>
+<body>
+<h1>网络分层</h1>
+
+<blockquote>
+<p>程序在发送消息时，应用层按照既定的协议打包数据，随后由传输层加上双方端口号，由网络层加上双方IP地址，由连读层加上双发MAC地址，并将数据拆分成数据帧，经过多个路由和网关后，到达目标机器。</p>
+</blockquote>
+
+<hr />
+
+<h3>应用层：打包数据</h3>
+
+<p>传输层的数据到达应用程序时，以某种统一规定的协议格式解读数据。</p>
+
+<hr />
+
+<h3>传输层：加上端口号</h3>
+
+<blockquote>
+<p>数据包通过网络层发送到目标计算机之后，应用程序在传输层定义逻辑端口，确认身份后，将数据包交给应用程序，实现端口到端口间通信。</p>
+</blockquote>
+
+<hr />
+
+<h3>网络层：加上ip地址</h3>
+
+<blockquote>
+<p>根据IP定义网络地址，区分网段。</p>
+
+<p>子网内根据地址解析协议进行MAC寻址，子网外进行路由转发数据包，这个数据包即IP数据包。</p>
+</blockquote>
+
+<hr />
+
+<h3>数据链路层：加上mac地址</h3>
+
+<blockquote>
+<p>单个0、1是没有意义的，链路层以字节为单位把0、1分组，定义数据帧，写入源和目标机器的物理地址、数据、校验位来传输数据。</p>
+</blockquote>
+
+<p><img src='/Users/zhangyaxing/Desktop/note/network/src/链路层报文结构.png'></p>
+
+<p>MAC地址长6个字节，通常使用十六进制数表示。前24位由管理机构统一分配，后24位由厂商自己分配，保证网卡全球唯一。</p>
+
+<hr />
+
+<h3>物理层</h3>
+
+</body>
+</html>
+

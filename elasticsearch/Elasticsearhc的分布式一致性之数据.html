@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Elasticsearhc的分布式一致性之数据</title>
+	</head>
+<body>
+<h1>Elasticsearhc的分布式一致性之数据</h1>
+
+<p>Es每个index分为多个shard，shard分布在不同的node上，以此来实现分布式存储和查询。每个shard又会有多个副本，其中一个为primary，其余的为replica。</p>
+
+<p>数据写入时，先写primary，由primary将数据同步给replica。而读取时，primary和replica都会接受读请求。</p>
+
+<hr />
+
+<h2>分布式系统特性</h2>
+
+<h3>可靠性</h3>
+
+<p>由于Lucene的设计不考虑可靠性，es中通过replica和TransLog两套机制保证数据的可靠性。</p>
+
+<h3>一致性</h3>
+
+<p>Lucene中的flush锁只保证update接口里面的delete和add中间不会flush，但是add完成后仍然有可能立即发生后flush，使segemnt可读。</p>
+
+<p>这样就无法保证premary和其他所有replica在同一时间flush，会出现查询不稳定的情况，es只能实现<strong>最终一致性</strong>。</p>
+
+<h3>原子性</h3>
+
+<p>Add和delete都是直接调用Lucene的接口，是原子的。当部分更新时，使用<code>_version</code>和锁保证更新是原子的。</p>
+
+<h3>隔离性</h3>
+
+<p>采用<code>_version</code>和锁保证更新的是特定版本的数据。</p>
+
+<h3>实时性</h3>
+
+<p>使用定期refresh segment到内存，并且reopen segment的方式保证数据可以在短时间内被搜索到。通过将未刷新到磁盘数据记入TransLog，保证对未提交数据可以通过<code>_id</code>实时访问到。</p>
+
+<h3>性能</h3>
+
+<ul>
+	<li>不需要所有repkica都返回后才能返回给用户，只需返回特定数目的即可；</li>
+	<li>生成的segment先在内存中提供服务，等一段时间后才刷新到磁盘，这段时间的可靠性由TransLog保证；</li>
+	<li>TransLog可以配置为周期性flush，但会给可靠性带来伤害；</li>
+	<li>每个线程持有一个segment，多线程相互不影响，性能更好；</li>
+	<li>系统的写入流程对版本依赖较重，读取频率较高，因此在内存中存放VersionMap，减少磁盘I/O</li>
+</ul>
+
+<hr />
+
+<h2>数据写入流程</h2>
+
+<h3>逻辑写入流程</h3>
+
+<p>es采用多shard方式，通过配置routing规则将数据集分成多个数据子集，每个数据子集提供独立的索引和搜索功能。</p>
+
+<p>写入文档时，根据routing规则，将文档发送给特定shard建立索引。</p>
+
+<p>es整体架构上采用了一主多副的方式：</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E4%B8%80%E4%B8%BB%E5%A4%9A%E5%89%AF.jpg"/></figure>
+
+<p>每个index由多个shard组成，每个shard有一个主节点和多个副本节点。</p>
+
+<p>每次写入时：</p>
+
+<ol>
+	<li>写入请求根据routing规则选择发给哪个shard：index request可以设置使用哪个field的值作为路由参数，如果没有设置则使用mapping中的设置，如果mapping也没用设置则使用<code>_id</code>作为路由参数；然后通过routing的hash值选择shard；最后从集群的meta中找出该shard的primary节点</li>
+	<li>请求接着会发送给primary shard，在primary shard执行成功后，再从primary shard上将请求同时发送给多个replica shard；请求在多个replica shard上执行成功并返回给primary shard后，写入请求执行成功，返回结果给客户端</li>
+</ol>
+
+<p>这种模式下，写入操作的延时就等于：latency = Latency(primary write) + xax(replica write)。写入效率较低，但是可以避免写入后单机或磁盘故障导致数据丢失。</p>
+
+<h3>物理写入流程</h3>
+
+<p>es为了减少磁盘I/O保证读写性能，一般是每隔一段时间才会把Lucene的Segment写入磁盘持久化。</p>
+
+<p>为了避免写入内存还未Flush到磁盘的Lucene数据在发生故障时丢失，es的处理方式是TransLog。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/Refresh%5C%20%5C&amp;%5C&amp;%5C%20Flush.jpg"/></figure>
+
+<p>在每一个shard中，写入流程分为两部分：<strong>先写入Lucene，再写入TransLog</strong>。</p>
+
+<blockquote>
+<p>写入请求到达shard后，先写Lucene文件，创建好索引，此时索引还在内存里面，接着去写TransLog，写完TransLog后，刷新TransLog数据到磁盘上，写磁盘成功后，请求返回给用户。</p>
+</blockquote>
+
+<p>写Lucene内存后并不是直接可以被搜索的，需要通过refresh把内存的对象转成完整的Segment后，然后再次reopen后才能被搜索（一般这个时间设置为1秒，因此写入es的文档最快要1秒才能被搜索，es在搜索方面是NRT近实时系统）。</p>
+
+<p>当es作为NoSQL数据库时，查询方式是GetById，这种查询可以直接从TransLog中查询，这时候就成了RT实时系统。</p>
+
+<p>每隔一段较长时间，Lucene会把内存中生成的新Segment刷新到磁盘上，刷新后索引文件已经持久化了，历史的TransLog就没用了，会清空旧的TransLog。</p>
+
+<h3>写入请求类型</h3>
+
+<p>Es中的写入请求类型主要有：index（create）、update、delete和bulk。其中前三个是单文档操作；bulk是多文档操作，可以包括前三个。</p>
+
+<hr />
+
+<h2>数据更新流程</h2>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E6%95%B0%E6%8D%AE%E6%9B%B4%E6%96%B0%E6%B5%81%E7%A8%8B.jpg"/></figure>
+
+<p>Lucene不支持部分字段的update，所以需要在es中实现该功能，具体流程如下：</p>
+
+<ol>
+	<li>收到update请求后，从segment或者TransLog中读取同id的完整doc，记录版本号为V1；</li>
+	<li>将版本V1的全量doc和请求中的部分字段合并为一个完整的doc，此时update请求变为index请求；同时更新内存中的VersionMap；</li>
+	<li>加锁；</li>
+	<li>再次从VersionMap中获取该<code>_id</code>最大版本号V2，如果VersionMap中没有，则从Segment或者TransLog读取；</li>
+	<li>检查版本是否冲突，如果冲突，则回退到开始的update doc阶段，重新执行；如果不冲突，执行最新的请求；</li>
+	<li>在index doc阶段，首先将Version+1，再将doc加入到Lucene中去，Lucene会先删除同<code>_id</code>下已存在的doc，然后增加新的doc。写入Lucene成功后，将当前<code>_version</code>更新到VersionMap中；</li>
+	<li>释放锁</li>
+</ol>
+
+<hr />
+
+<h2>PacificA算法</h2>
+
+<h3>特点</h3>
+
+<ul>
+	<li>强一致性</li>
+	<li>单primary向多secondary的数据同步模式</li>
+	<li>使用额外的一致性组件维护configuration</li>
+	<li>少数派replica可用时仍可写入</li>
+</ul>
+
+<h3>名词解释</h3>
+
+<h4>replica group</h4>
+
+<p>一个互为副本的数据集合，其中每个副本是一个replica。</p>
+
+<p>一个replica group中只有一个副本是primary，其余是secondary。</p>
+
+<h4>configuration</h4>
+
+<p>一个replica group的configuration描述了这个replica group包含哪些replica，primary是谁等信息。</p>
+
+<h4>configuration version</h4>
+
+<p>configuration的版本号，每次configuration变更时+1。</p>
+
+<h4>configuration manager</h4>
+
+<p>管理configuration的全局组件，其保证configuration数据的一致性。</p>
+
+<p>configuration变更会由某个replica发起，带着version发送给configuration manager，configuration manager检查version是否正确，如果不正确则拒绝更改。</p>
+
+<h4>query &amp; update</h4>
+
+<p>对一个replica group的操作分为两种，query和update，query不会改变数据，update会改变数据。</p>
+
+<h4>serial number</h4>
+
+<p>代表每个update操作执行的顺序，每次update操作+1，为连续的数字。</p>
+
+<h4>prepared list</h4>
+
+<p>Update操作的准备序列。</p>
+
+<h4>committed list</h4>
+
+<p>Update操作的提交序列，提交序列中的操作一定不会丢失（除非全部副本挂掉）。</p>
+
+<p>在同一个replica上，committed list一定是prepared list的前缀。</p>
+
+<h3>primary invariant</h3>
+
+<p>pacificA算法中，要求采用某种错误检测机制来满足以下不变式：</p>
+
+<p>任何时候，当一个replica认为自己是primary时，configuration manager中维护的configuration也认为其是当前的priamry。任何时候，最多只有一个replica认为自己是这个replica group的primary。</p>
+
+<p><strong>primary invariant保证了当一个节点认为自己是primary时，其肯定是当前的priamry</strong>。如果不能满足primary invariant，那么query请求就可能发送给old primary，读到旧的数据。</p>
+
+<p>分布式系统常用的保证primary invariant的方式是<strong>lease机制</strong>：primary会定期获取一个lease，获取之后认为某段时间内自己肯定是primary，一旦超过这个时间还未获取到新的lease就退出primary状态。</p>
+
+<p>实现lease机制的方式是：primary定期向所有secondary发送心跳来获取lease，而不是所有节点都向某个中心化组件获取lease。</p>
+
+<h3>query</h3>
+
+<p>Query的流程比较简单，query只能发送给primary，primary根据最新commit的数据，返回对应的值。由于算法要求满足priamry invariant，所以query总是能读到最新commit的数据。</p>
+
+<h3>update</h3>
+
+<ol>
+	<li>priamry分配一个serial number给一个update request；</li>
+	<li>primary将这个update request加入自己的prepared list，同时向所有secondary发送prepare请求，要求将这个update request加入prepared list；</li>
+	<li>当所有replica都完成了prepare，即所有replica的prepared list都包含了这个update request，primary开始commit这个request，即将这个update request放入commit list，同时apply这个update（需要注意的是，同一个replica上，committed list永远是prepared list的前缀，所以primary实际上是提高committed point，把这个update request包含进来）；</li>
+	<li>返回客户端，update操作成功</li>
+</ol>
+
+<p>当下一次primary向secondary发送请求时，会带上primary当前的committed point，此时secondary才会提高自己的committed point。</p>
+
+<h3>secondary故障</h3>
+
+<p>当一个secondary故障时，primary向configuration manager发送reconfiguration，将故障节点从replica group中删除。一旦删除这个replica，所有请求都不会再发给它。</p>
+
+<p>假设某个priamry和secondary发生网络分区，但是都可以连接到configuration manager。当两者相互之间无法响应，两者都会试图发起reconfiguration，将对方从replica group中移除，这里的策略是<strong>first win原则</strong>，谁先到configuration manager中更改成功，谁就留在replica group中。</p>
+
+<h3>primary故障</h3>
+
+<p>当一个primary发生故障，secondary收不到primary的心跳，如果超过lease的时间，那么secondary就会发起reconfiguration，将primary删除。同样按照first win原则，谁先删除primary谁就称为primary。</p>
+
+<p>当一个secondary变成primary后，需要先经过reconfiguration才能提供服务。由于committed invariant，原先的primary的committed list一定是新的primary的prepared list的前缀，那么将新的primary的prepared list中的内容与当前replica group中的其他节点对齐，相当于把该节点上未commit的记录在所有节点再commit一次，那么就一定包含之前所有的commit记录，也就是<strong>reconfiguration invariant</strong>：当一个新的primary在T时刻完成reconfiguration时，那么T时刻之前任何节点的committed list都是新primary当前prepared list的前缀。</p>
+
+<h3>新加节点</h3>
+
+<p>新加的节点需要先成为Secondary Candidate，这时候Primary就开始向其发送Prepare请求，此时这个节点还会追之前未同步过来的记录，一旦追平，就申请成为一个Secondary，然后Primary向Configuration Manager发起配置变更，将这个节点加入Replica Group。</p>
+
+<p>还有一种情况时，如果一个节点曾经在Replica Group中，由于临时发生故障被移除，现在需要重新加回来。此时这个节点上的Commited List中的数据肯定是已经被Commit的了，但是Prepared List中的数据未必被Commit，所以应该将未Commit的数据移除，从Committed Point开始向Primary请求数据。</p>
+
+<h3>算法总结</h3>
+
+<p>pacificA是一个读写都满足强一致性的算法，它把数据的一致性与configuration的一致性分开，使用额外的一致性组件（configuration manager）维护配置的一致性，在数据的可用副本数少于一半时，仍可以写入新数据并保证强一致性。</p>
+
+<p>Es在设计上参考了pacificA算法，通过master维护index的meta，类似于configuration manager维护configuration。其index meta中的InSyncAllocationIds代表了当前可用的shard，类似于replia group。</p>
+
+<hr />
+
+<h2>es的SequenceNumber、CheckPoint与故障恢复</h2>
+
+<h3>Term和SequenceNumber</h3>
+
+<p>每个写操作都会被分配这两个值。Term在每次primary变更时都会+1，类似于pacificA的configuration version。SequenceNumber在每次操作后+1，类似于serial number。</p>
+
+<p>由于写请求总是发给primary，所以Term和SequenceNumber会由primary分配，在向replica发送同步请求时，会带上这两个值。</p>
+
+<h3>LocalCheckpoint和GlobalCheckpoint</h3>
+
+<p>LocalCheckpoint代表本sahrd中所有小于该值的请求都已经处理完毕。</p>
+
+<p>GlobalCheckpoint代表所有小于该值的请求在所有replica上都处理完毕。</p>
+
+<p>GlobalCheckpoint由primary进行维护，每个replica会向primary汇报自己的LocalCheckpoint，primary根据这些信息提升GlobalCheckpoint。</p>
+
+<h3>快速故障恢复</h3>
+
+<p>当一个Replica故障时，ES会将其移除，当故障超过一定时间，ES会分配一个新的Replica到新的Node上，此时需要全量同步数据。但是如果之前故障的Replica回来了，就可以只回补故障之后的数据，追平后加回来即可，实现快速故障恢复。实现快速故障恢复的条件有两个，一个是能够保存故障期间所有的操作以及其顺序，另一个是能够知道从哪个点开始同步数据。第一个条件可以通过保存一定时间的Translog实现，第二个条件可以通过Checkpoint实现，所以就能够实现快速的故障恢复。这是SequenceNumber和Checkpoint的第一个重要应用场景。</p>
+
+<h2>ES与PacificA的比较</h2>
+
+<h3>相同点</h3>
+
+<ul>
+	<li>Meta一致性和Data一致性分开处理：PacificA中通过Configuration Manager维护Configuration的一致性，ES中通过Master维护Meta的一致性；</li>
+	<li>维护同步中的副本集合：PacificA中维护Replica Group，ES中维护InSyncAllocationIds；</li>
+	<li>SequenceNumber：在PacificA和ES中，写操作都具有SequenceNumber，记录操作顺序</li>
+</ul>
+
+<h3>不同点</h3>
+
+<p>不同点主要体现在ES虽然遵循PacificA，但是目前其实现还有很多地方不满足算法要求，所以不能保证严格的强一致性。主要有以下几点：</p>
+
+<ul>
+	<li>Meta一致性：上一篇中分析了ES中Meta一致性的问题，可以看到ES并不能完全保证Meta一致性，因此也必然无法严格保证Data的一致性；</li>
+	<li>Prepare阶段：PacificA中有Prepare阶段，保证数据在所有节点Prepare成功后才能Commit，保证Commit的数据不丢，ES中没有这个阶段，数据会直接写入；</li>
+	<li>读一致性：ES中所有InSync的Replica都可读，提高了读能力，但是可能读到旧数据。另一方面是即使只能读Primary，ES也需要Lease机制等避免读到Old Primary。因为ES本身是近实时系统，所以读一致性要求可能并不严格</li>
+</ul>
+
+</body>
+</html>
+

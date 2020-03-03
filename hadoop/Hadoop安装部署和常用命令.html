@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Hadoop安装部署和常用命令</title>
+	</head>
+<body>
+<h1>Hadoop安装部署和常用命令</h1>
+
+<hr />
+
+<h2>安装部署</h2>
+
+<ol>
+	<li>下载Hadoop源码，解压到本地。<code>/Users/xerxes/hadoop-2.8.2 </code></li>
+	<li>添加环境变量：
+
+		<pre><code>export HADOOP_HOME=/Users/xerxes/hadoop-2.8.2
+		export PATH=$PATH:$HADOOP_HOME/bin
+		</code></pre></li>
+	<li>修改配置文件：
+
+		<ul>
+			<li>hadoop-env.sh</li>
+			<li>core-site.xml</li>
+			<li>hdfs-site.xml</li>
+			<li>mapred-site.xml</li>
+			<li>yarn-site.xml</li>
+		</ul></li>
+</ol>
+
+<h2>常用命令</h2>
+
+<h3>启动</h3>
+
+<h4>启动NameNode</h4>
+
+<p><code>hadoop namenode -format</code></p>
+
+<h4>启动hdfs</h4>
+
+<pre><code>cd ~/hadoop-2.8.2/sbin
+./start-dfs.sh
+</code></pre>
+
+<h4>启动yarn</h4>
+
+<p><code>./start-yarn.sh</code></p>
+
+</body>
+</html>
+

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>TCP/IP协议</title>
+	</head>
+<body>
+<h1>TCP/IP协议</h1>
+
+<blockquote>
+<p>传输控制协议/因特网互联协议。</p>
+
+<p>TCP/IP是当前流行的网络传输协议框架，从严格意义上讲它是一个协议族，TCP和IP是其中最为核心的协议。</p>
+</blockquote>
+
+<hr />
+
+<h3>IP协议</h3>
+
+<p>IP是面向无连接、无状态的，没有额外的机制保证发送的包是否有序到达。</p>
+
+<p>IP首先规定出IP地址格式，该地址相当于在逻辑意义上进行了网段的划分，给每台计算机额外设置了一个唯一的详细地址。</p>
+
+<p>IP地址属于网络层，主要功能在WLAN内进行路由寻址，选择最佳路由。</p>
+
+<p><img src='/Users/zhangyaxing/Desktop/note/network/src/IP报文格式.png'></p>
+
+<hr />
+
+<h3>TCP协议</h3>
+
+<p>TCP是一种面向连接、确保数据在端到端间可靠传输的协议。</p>
+
+<p>面向连接是指在发送数据前，需要先建立一条虚拟的链路，然后让数据在这条链路上流动完成传输。</p>
+
+<p>为了确保数据的可靠传输，不仅需要对发出的每一个字节进行编号确认，校验每一个数据包的有效性，在出现超时情况时进行重传，还需要通过滑动窗口和拥塞控制等机制，避免网络状况恶化而最终影响数据传输的极端情形。</p>
+
+<p><img src='/Users/zhangyaxing/Desktop/note/network/src/IP报文格式.png'></p>
+
+<hr />
+
+<h5>三次握手</h5>
+
+<p><img src='/Users/zhangyaxing/Desktop/note/network/src/三次握手.png'></p>
+
+<p>两个目的：信息对等和防止超时。</p>
+
+<hr />
+
+<h5>四次挥手</h5>
+
+<p><img src='/Users/zhangyaxing/Desktop/note/network/src/四次挥手.png'></p>
+
+</body>
+</html>
+

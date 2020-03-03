@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>es数据模型</title>
+	</head>
+<body>
+<h1>es数据模型</h1>
+
+<hr />
+
+<h2>Lucene数据模型</h2>
+
+<h3>Lucene包含了四种基本数据类型</h3>
+
+<ul>
+	<li>Index：索引，由很多document组成</li>
+	<li>Document：由很多field组成，是index的最小单位</li>
+	<li>Field：由很多term组成，包括field name和field value</li>
+	<li>Term：由很多字节组成，可以分词</li>
+</ul>
+
+<h3>Lucene中存储的索引主要分为三种类型</h3>
+
+<ul>
+	<li>Invert Index：倒排索引，通过索引可以查找拥有该term的文档。索引存储的时候有多种存储类型：
+
+		<ul>
+			<li><code>DOCS</code>：只存储DocID</li>
+			<li><code>DOCS_AND_FREQS</code>：多存词频</li>
+			<li><code>DOCS_AND_FREQS_AND_POSITIONS</code>：多存位置</li>
+			<li><code>DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS</code>：多存偏移</li>
+		</ul></li>
+	<li>Doc Values：正排索引，采用列式存储。通过DocID可以快速读取到该Doc的特定字段的值</li>
+	<li>Store：字段原始内容存储，同一篇文章的多个Field的Store会存储在一起，适用于一次读取少量且多个字段内存的场景</li>
+</ul>
+
+<h3>Lucene的Segment的类型</h3>
+
+<p>Lucene中提供索引和搜索的最小组织形式是Segment，Segment中按照索引类型不同，主要分成了Invert Index、Doc Values和Store三类，每一类里面都是按照Doc为最小单位存储。</p>
+
+<ul>
+	<li>Invert Index中存储的Key是Term，Values是DocID的链表；</li>
+	<li>Doc Value中Key是DocID和Field Name，Values时Field Value；</li>
+	<li>Store的Key是DocID，Value是Field Name和Field Value</li>
+</ul>
+
+<h3>Lucene的不足</h3>
+
+<ul>
+	<li>Lucene是一个单机的搜索库，无法以分布式形式支持海量数据；</li>
+	<li>Lucene中没有更新，每次都是append一个新文档，无法做部分字段的更新；</li>
+	<li>Lucene中没有主键索引，无法处理同一个Doc的多次写入；</li>
+	<li>在稀疏列数据中，如何判断某些文档是否存在特定字段？</li>
+	<li>Lucene中生成完整Segment后，该Segment就不能再被修改，此时Segment才能被搜索，这种情况下如何做实时搜索？</li>
+</ul>
+
+<hr />
+
+<h2>Elasticsearch如何解决Lucene的不足</h2>
+
+<p>在es中，为了支持分布式，增加了一个系统字段<code>_routing</code>，将Doc分发到不同的Shard，不同的Shard可以位于不同的机器上，以此来实现分布式。</p>
+
+<p>采用类似的方式，es增加了几个系统字段，来弥补Lucene的不足。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E7%B3%BB%E7%BB%9F%E5%AD%97%E6%AE%B5.jpg"/></figure>
+
+<h3><code>_id</code></h3>
+
+<p>Lucene中没有主键索引，要保证系统中同一个Doc不会重复，es引入了<code>_id</code>字段来实现主键。</p>
+
+<p><code>_id</code>作为Doc的主键，在写入的时候，可以指定该Doc的ID值，如果不指定，则系统自动生成一个唯一的UUID值。通过<code>_id</code>值（es内部转换成<code>_uid</code>）可以唯一确定一个Doc。</p>
+
+<p>Es中，<code>_id</code>只是一个用户级别的虚拟字段，在es中并不会映射到Lucene中，所以不会存储该字段。</p>
+
+<p><code>_id</code>的值可以由<code>_uid</code>解析而来，es中会存储<code>_uid</code>。</p>
+
+<h3><code>_uid</code></h3>
+
+<p><code>_uid = type + &#39;#&#39; + id</code></p>
+
+<p>6.0.0之后只支持单Type，同index下id值唯一。</p>
+
+<p><code>_uid</code>会存储在Lucene中，在Lucene中的映射关系如下：</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_uid</td><td>yes</td><td>doc</td><td>no</td><td>no</td><td>yes</td></tr>
+</table>
+<p><code>_uid</code>只存储了倒排索引和原文Store，倒排索引是为了通过<code>_id</code>快速查到文档，原文Store用来在返回的response里面填充完整的<code>_id</code>值。</p>
+
+<h3><code>_version</code></h3>
+
+<p>Es中每个Doc都会有一个<code>_version</code>，可以由用户指定，也可以由系统自动生成。</p>
+
+<p><code>_version</code>可以通过<code>_uid</code>从内存中versionMap或者TransLog中读取，所以它是实时的，不受搜索的近实时性影响。</p>
+
+<p><code>_version</code>在Lucene中也是映射为一个字段：</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_version</td><td>no</td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+</table>
+<p><code>_version</code>主要目的是通过<code>_id</code>读取<code>_version</code>，所以只要存储DocValues就可以了。es通过使用<code>_version</code>来保证以正确的顺序执行对文档的变更，避免乱序造成的数据丢失：</p>
+
+<ol>
+	<li>首次写入doc的时候，会为doc分配一个初始<code>_version</code>：V0，该值根据VersionType不同而不同；</li>
+	<li>再次写入doc的时候，如果request没有指定<code>_version</code>，则会先加锁，然后去读取该doc的最大版本V1，然后将V2后的新版本写入Lucene中；</li>
+	<li>再次写入doc的时候，如果request制定了<code>_version</code>：V1，则先加锁，然后去读取该doc的最大版本V2，判断V1==V2，如果不相等，则发生版本冲突；否则版本吻合，写入Lucene；</li>
+	<li>做部分更新的时候，会先通过getRequest读取当前<code>_id</code>的完整doc和V1，接着和当前reuqest中的doc合并为一个完整的doc。然后执行一些逻辑后，加锁，再次读取该doc的最大版本V2，判断V1==V2，如果不相等，则在刚才执行其他逻辑时被其他线程更改了当前文档，需要报错后重试；如果相等，则期间没有其他线程修改当前文档，继续写入Lucene。这个过程是一个典型的read-then-update事务。</li>
+</ol>
+
+<h3><code>_source</code></h3>
+
+<p><code>_source</code>是es中一个很重要的概念，主要目的是通过<code>_id</code>读取该文档的原始内容，所以只需存储原始文档，也可以通过过滤设置只存储特定字段。</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_source</td><td>no</td><td>no</td><td>no</td><td>no</td><td>yes</td></tr>
+</table>
+<p>Es中使用<code>_source</code>可以实现以下功能：</p>
+
+<ul>
+	<li>update：部分更新时，需要读取文档保存在<code>_source</code>中的原文，然后和请求中的部分字段合并为一个完整文档；</li>
+	<li>rebuild：通过rebuild API完成索引重建，过程中不需要从其他系统导入全量数据，而是从当前文档的<code>_source</code>中读取；</li>
+	<li>script：不管是index还是search的script，都可能用到存储在<code>_source</code>中的原文；</li>
+	<li>summary：摘要信息来源于<code>_source</code>的原文</li>
+</ul>
+
+<h3><code>_seq_no</code></h3>
+
+<p>严格递增的顺序号，每个文档一个，shard级别严格递增，保证后写入的doc的<code>_seq_no</code>一定大于先写入的doc的<code>_seq_no</code>。</p>
+
+<p>包括index、create、update和delete在内的所有写操作都会生成一个<code>_seq_no</code>。</p>
+
+<p><code>_seq_no</code>有两个作用，一是通过<code>_id</code>查找文档的<code>_seq_no</code>，二是通过<code>_seq_no</code>范围查找相关文档，所以只需要存储Index和DocValues（或者Store）。</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_seq_no</td><td>yes</td><td>DOCS_FREQS_POSITIONS</td><td>yes</td><td>yes</td><td>no</td></tr>
+</table>
+<h3><code>_primary_term</code></h3>
+
+<p>和<code>_seq_no</code>一样是一个整数，每当primary shard发生重新分配时，比如重启、Primary选举等，<code>_primary_term</code>会递增1。</p>
+
+<p><code>_primary_term</code>主要用来恢复数据时处理当多个文档的<code>_seq_no</code>一样时的冲突，避免primary shard上的写入被覆盖。</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_primary_term</td><td>no</td><td>no</td><td>no</td><td>yes</td><td>no</td></tr>
+</table>
+<p>es中<code>_primary_term</code>只需要通过<code>doc_id</code>读取到即可，所以只需要保存为DocValues就可以了。</p>
+
+<h3><code>_routing</code></h3>
+
+<p>路由规则，写入和查询的routing需要一致，否则会出现写入的文档没法被查到情况。</p>
+
+<p>在mapping中，或者Request中可以指定按某个字段路由。默认是按照<code>_Id</code>值路由。</p>
+
+<p><code>_routing</code>在Lucene中映射为：</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_routing</td><td>yes</td><td>doc</td><td>no</td><td>no</td><td>yes</td></tr>
+</table>
+<p>Es中文档级别的<code>_routing</code>主要有两个目的，一是可以查询到使用某种<code>_routing</code>的文档有哪些，当发生<code>_routing</code>变化时，可以对历史<code>_routing</code>的文档重新读取再Index，这个需要倒排Index。另一个是查询到文档后，在Response里面展示该文档使用的<code>_routing</code>规则，这里需要存储为Store。</p>
+
+<h3><code>_field_names</code></h3>
+
+<p>该字段会索引某个Field的名称，用来判断某个Doc中是否存在某个Field，用于exists或者missing请求。</p>
+
+<p><code>_field_names</code>在Lucene中的映射：</p>
+
+<table> 
+<tr><th>Field</th><th>Index</th><th>Index Type</th><th>Analyzer</th><th>DocValues</th><th>Store</th><tr>
+<tr><td>_field_names</td><td>yes</td><td>doc</td><td>no</td><td>no</td><td>no</td></tr>
+</table>
+<p>es中<code>_field_names</code>的目的是查询哪些Doc的这个Field是否存在，所以只需要倒排Index即可。</p>
+
+</body>
+</html>
+

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>搜索数据</title>
+	</head>
+<body>
+<h1>搜索数据</h1>
+
+<hr />
+
+<h2>搜索请求的结构</h2>
+
+<h3>确定搜索范围</h3>
+
+<ul>
+	<li>搜索整个集群
+
+		<pre><code>curl &#39;localhost:9200/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+	<li>搜索索引
+
+		<pre><code>curl &#39;localhost:9200/get-togather/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+	<li>在索引中搜索类型
+
+		<pre><code>curl &#39;localhost:9200/get-togather/event/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+	<li>在全部索引中搜索类型
+
+		<pre><code>curl &#39;localhost:9200/_all/event/_search&#39; -d &#39;...&#39;
+		curl &#39;localhost:9200/*/event/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+	<li>在多个索引中搜索多个类型
+
+		<pre><code>curl &#39;localhost:9200/get-togather,other/event,group/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+	<li>搜索所有以‘get-toge’开头的索引，但是不包括‘get-together’
+
+		<pre><code>curl &#39;localhost:9200/+get-toge*,-get-together/_search&#39; -d &#39;...&#39;
+		</code></pre></li>
+</ul>
+
+<p>还可以使用别名来搜索多个索引。这个方法经常用于搜索所有基于时间戳的索引。但是为了获得更好的性能，尽可能将查询限制在最小数量的索引和类型。</p>
+
+<h3>搜索请求的基本模块</h3>
+
+<p>一旦选择了要搜索的索引，就需要配置搜索请求中最为重要的模块。这些模块涉及文档返回的数量，选择最佳的文档返回，以及配置不希望哪些文档出现在结果中。</p>
+
+<h4>query</h4>
+
+<p>这是搜索请求中最重要的组成部分，它配置了基于评分返回的最佳文档，也包括了你不希望返回哪些文档。该模块使用查询DSL和过滤器DSL来配置。</p>
+
+<h4>size</h4>
+
+<p>代表了返回文档的数量。</p>
+
+<h4>from</h4>
+
+<p>和size一起使用，from用于分页操作。</p>
+
+<pre><code>curl &#39;localhost:9200/get-together/_search?from=10&amp;size=10&#39;
+</code></pre>
+
+<h4>_source</h4>
+
+<p>指定_source字段如何返回。默认返回完整的内容，配置后可以过滤返回的字段。</p>
+
+<pre><code>curl &#39;localhost:9200/get-together/_search?_source=title,date&#39;
+</code></pre>
+
+<h4>sort</h4>
+
+<p>默认的排序是基于文档的得分，添加额外的sort将帮助控制哪些文档被返回。</p>
+
+<pre><code>curl &#39;localhost:9200/get-together/_search?sort=date:asc&#39;
+</code></pre>
+
+<h3>基于请求主体的搜索请求</h3>
+
+<p>基于URL的查询中使用基础的搜索请求模块是一种与es交互很好的方式，当执行更多高级搜索的时候，采用基于请求主体的搜索会有更多的灵活性和选择性。</p>
+
+<pre><code>curl &#39;localhost:9200/get-together/group/_search&#39; -d &#39;
+{
+	&quot;query&quot;: {
+		&quot;match_all&quot;: {}
+	}
+	&quot;from&quot;: 0,
+	&quot;size&quot;: 10,
+	&quot;_source&quot;: [&quot;name&quot;, &quot;organizer&quot;],
+	&quot;sort&quot;: [{&quot;created_on&quot;: &quot;desc&quot;}]
+&#39;
+</code></pre>
+
+<h3>搜索请求回复的结构</h3>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E6%90%9C%E7%B4%A2%E8%AF%B7%E6%B1%82%E5%92%8C%E5%9B%9E%E5%A4%8D%E6%A0%B7%E4%BE%8B.jpg"/></figure>
+
+<hr />
+
+<h2>查询和过滤器DSL</h2>
+
+<h3>match查询和term过滤器</h3>
+
+<h4>match查询</h4>
+
+<pre><code>curl &#39;localhost:9200/get-together/event/_search&#39; -d &#39;{
+&quot;query&quot;: {
+	&quot;match&quot;: {
+		&quot;title&quot;: &quot;hadoop&quot;
+	}
+}
+}&#39;
+</code></pre>
+
+<h4>term过滤器</h4>
+
+<pre><code>curl &#39;localhost:9200/get-together/_search&#39; -d &#39;{
+&quot;query&quot;: {
+	&quot;filtered&quot;: {
+		&quot;query&quot;: {
+			&quot;match&quot;: {
+				&quot;title&quot;: &quot;hadoop&quot;
+			}
+		},
+		&quot;filter&quot;: {
+			&quot;term&quot;: {
+				&quot;host&quot;: &quot;andy&quot;
+			}
+		}
+	}
+}
+}&#39;
+</code></pre>
+
+<p>过滤查询包括两个模块：查询和过滤器：</p>
+
+<ul>
+	<li><strong>filtered</strong>：Filtered Query，是一种查询类型，先使用filter，过滤后的结果再query；</li>
+	<li><strong>filter</strong>：当查询类型为Filtered Query时会包含一个filter，用来将查询结果限制在andy组织的活动。另外，filter也可以在query外面，称为Post Filter，先query，query后的结果再过滤。只有当你需要对搜索结果和聚合使用不同的过滤方式时才考虑使用Post Filter</li>
+</ul>
+
+<p>这里使用了普通查询匹配了”hadoop“的活动，除了关键词”hadoop“的查询，还有一个过滤器用于限制活动的搜索结果。在这个<strong>filter</strong>部分，一个<strong>term</strong>过滤器运用在所有文档上来寻找组织者为”andy“的文档。</p>
+
+<p>在幕后，es建立了一个bitset，这是一个位的二进制集合，表示某个文档是否匹配过滤器。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E8%BF%87%E6%BB%A4%E5%99%A8%E4%BD%8D%E9%9B%86%E5%90%88.jpg"/></figure>
+
+<p>创建位集合后，es现在考研使用它来进行过滤，根据搜索的查询部分来排除掉不应该被搜索到的文档。</p>
+
+<h4>查询和过滤的区别</h4>
+
+<p><strong>过滤器和查询类似，但是它们在评分机制和搜索行为的性能上有所不同</strong>。</p>
+
+<p>不像查询会为特定的词条计算得分，搜索的过滤器只是为“文档是否匹配这个查询”，返回简单的“是”或“否”。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/%E6%9F%A5%E8%AF%A2%E5%92%8C%E8%BF%87%E6%BB%A4%E7%9A%84%E5%8C%BA%E5%88%AB.jpg"/></figure>
+
+<p>由于这个差异，过滤器可以比普通的查询更快，而且还可以被缓存。</p>
+
+<p>使用过滤器的搜索和使用查询的普通搜索相似，但是需要将查询替换为“filtered”映射，包含原始的查询和需要应用的过滤器。</p>
+
+</body>
+</html>
+

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>MySQL 架构与查询流程</title>
+	</head>
+<body>
+<h1>MySQL 架构与查询流程</h1>
+
+<hr />
+
+<h2>逻辑架构</h2>
+
+<p><img src='/Users/xerxes/note/MYSQL/src/mysql逻辑架构.png'></p>
+
+<ol>
+	<li>MySQL 的逻辑架构整体分为三层，最上层为客户端层，并非 MySQL 所独有，诸如：连接处理、授权认证、安全等功能均在这一层处理。</li>
+	<li>MySQL 的大多数核心服务均在中间这一层，包括查询解析、分析、优化、缓存、内置函数(比如：时间、数学、加密等函数)。所有的跨存储引擎的功能也在这一层实现：存储过程、触发器、视图等。</li>
+	<li>最下层为存储引擎，负责 MySQL 中的数据存储和提取。和 Linux 下的文件系统类似，每种存储引擎都有其优势和劣势。</li>
+</ol>
+
+<hr />
+
+<h2>MySQL查询过程</h2>
+
+<p><img src='/Users/xerxes/note/MYSQL/src/mysql查询过程.jpg'></p>
+
+<h3>客户端/服务端通信协议</h3>
+
+<p>MySQL 的客户端/服务端通信协议是“半双工”的：在任一时刻，要么是服务器向客户端发送数据，要么是客户端向服务器发送数据，这两个动作不能同时发生。</p>
+
+<p>一旦一端开始发送消息，另一端要接收完整个消息才能响应它，所以我们无法也无须将一个消息切成小块独立发送，也没有办法进行流量控制。</p>
+
+<h3>查询缓存</h3>
+
+<p>在解析一个查询语句<em>之前</em>，如果查询缓存是打开的，MySQL会先检查这个语句是否命中缓存中的数据。如果命中，在检查一次用户权限之后会直接返回缓存中的数据。</p>
+
+<p>MySQL将缓存存放在一个引用表(类似HashMap)，通过一个哈希值索引。</p>
+
+<p>任何写操作时，MySQL必须将对应表的所有缓存设置为失效。</p>
+
+<p>读操作时，查询语句不管会不会命中缓存都会经过检查；如果结果可以被缓存，执行完之后会被存入缓存。</p>
+
+<p>针对缓存的优化：</p>
+
+<ol>
+	<li>用多个小表代替一个大表，注意不要过度设计。
+
+		<ol>
+			<li>批量插入代替循环单条插入。</li>
+			<li>合理控制缓存空间大小，一般来说其大小设置为几十兆比较合适。</li>
+			<li>可以通过 <code>SQL_CACHE </code>和 <code>SQL_NO_CACHE</code> 来控制某个查询语句是否需要进行缓存。</li>
+		</ol></li>
+</ol>
+
+<h3>语法解析和预处理</h3>
+
+<p>通过关键字将sql进行解析，生成一棵对应的<em>解析树</em>。这个过程解析器主要通过语法规则来验证和解析。</p>
+
+<p>预处理则会根据规则进一步检查解析树是否合法。</p>
+
+<h3>查询优化</h3>
+
+<p><em>优化器</em>会将解析树转化成<em>查询计划</em>。</p>
+
+<p>MySQL使用基于成本的优化器，尝试预测一个查询使用某种执行计划时的成本，并选择成本最小的一个。</p>
+
+<p>MySQL 的查询优化器是一个非常复杂的部件，它使用了非常多的优化策略来生成一个最优的执行计划：  </p>
+
+<ol>
+	<li>重新定义表的关联顺序（多张表关联查询时，并不一定按照 SQL 中指定的顺序进行，但有一些技巧可以指定关联顺序）。</li>
+	<li>优化 MIN() 和 MAX() 函数（找某列的最小值，如果该列有索引，只需要查找 B+Tree 索引最左端，反之则可以找到最大值，具体原理见下文）。</li>
+	<li>提前终止查询（比如：使用 LIMIT 时，查找到满足数量的结果集后会立即终止查询）。</li>
+	<li>优化排序（在老版本 MySQL 会使用两次传输排序，即先读取行指针和需要排序的字段在内存中对其排序，然后再根据排序结果去读取数据行，而新版本采用的是单次传输排序，也就是一次读取所有的数据行，然后根据给定的列排序。对于 I/O 密集型应用，效率会高很多）。</li>
+</ol>
+
+<h3>查询执行引擎</h3>
+
+<p>引擎根据执行计划给出的指令逐步执行得出结果。</p>
+
+<p>整个执行过程的大部分操作均是通过调用存储引擎实现的接口来完成，这些接口被称为 handler API。</p>
+
+<h3>返回结果给客户端</h3>
+
+<p>结果集返回客户端是一个增量且逐步返回的过程。有可能 MySQL 在生成第一条结果时，就开始向客户端逐步返回结果集了。这样服务端就无须存储太多结果而消耗过多内存，也可以让客户端第一时间获得返回结果。</p>
+
+<hr />
+
+<h2>MySQL JOIN算法</h2>
+
+<blockquote>
+<p>MySQL只支持一种JOIN算法：Nested-Loop Join，也就是嵌套循环链接。</p>
+</blockquote>
+
+<h3>Simple Nested-Loop Join</h3>
+
+<p><img src='/Users/xerxes/note/MYSQL/src/Simple Nested-Loop.png'></p>
+
+<p>从驱动表取出一行与另一张表的每一行进行匹配，循环上一步直到取出驱动表所有行，然后合并数据。</p>
+
+<h3>Index Nested-Loop JoinIndex Nested-Loop Join</h3>
+
+<p><img src='/Users/xerxes/note/MYSQL/src/Index Nested-Loop Join.png'></p>
+
+<p>通过外层表匹配条件，直接与内层表索引进行匹配，避免喝内层表的每条记录进行匹配。</p>
+
+<p>如果非驱动表的关联字段是主键的话性能会非常高；如果不是主键，关联起来如果返回的行数很多的话，效率会非常低，因为要多次回表(先关联索引，然后根据二级索引的主键ID进行回表操作。)</p>
+
+<h3>Block Nested-Loop Join</h3>
+
+<p><img src='/Users/xerxes/note/MYSQL/src/Block Nested-Loop Join.png'></p>
+
+<p>在有索引的情况下，MySQL会尝试去使用Index Nested-Loop Join算法，在有些情况下，可能Join的列就是没有索引，那么这时MySQL的选择绝对不会是最先介绍的Simple Nested-Loop Join算法，而是会优先使用Block Nested-Loop Join的算法。</p>
+
+<p>Block Nested-Loop Join&nbsp;通过一次性缓存多条数据，把参与查询的列缓存到join buffer 里，,然后拿join buffer里的数据批量与内层表的数据进行匹配，从而减少了外层循环的次数。</p>
+
+<hr />
+
+<h2>mysql语句执行顺序</h2>
+
+<ol>
+	<li>from：对from的左边的表和右边的表生成笛卡尔积，产生虚拟表VT1；</li>
+	<li>on：对VT1进行on筛选，符合<code>on_condition</code>的记录存在虚拟表VT2中；</li>
+	<li>Join：如果指定了outer join（如left join、right join），将表中未匹配的记录和VT2中的记录一并生成VT3。如果子查询包含两个以上的表，则对上一个join产生的结果VT3和下一个表重复执行步骤1-3，一直到处理完所有的表；</li>
+	<li>Where：对VT3进行where条件过滤，过滤的记录生成VT4；</li>
+	<li>group by：根据group by中的列，对VT4中的记录进行分组操作，生成VT5；</li>
+	<li>cube|rollup：对VT5进行cube或者rollup操作，生成VT6；</li>
+	<li>having：对VT6进行having条件过滤，过滤的记录生成VT7；</li>
+	<li>select：执行select操作，生成VT8；</li>
+	<li>distinct：对VT8进行去重，生成VT9；</li>
+	<li>order by：对VT9进行排序，生成VT10；</li>
+	<li>limit：取出指定记录，生成VT11；返回结果</li>
+</ol>
+
+</body>
+</html>
+

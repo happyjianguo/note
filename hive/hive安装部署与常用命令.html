@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>hive安装部署与常用命令</title>
+	</head>
+<body>
+<h1>hive安装部署与常用命令</h1>
+
+<hr />
+
+<h2>安装部署</h2>
+
+<h6>安装</h6>
+
+<p>安装命令：<code>brew install hive</code></p>
+
+<p>安装位置：<code>/usr/local/Cellar/hive/3.1.2/ </code></p>
+
+<p>环境变量中添加：</p>
+
+<pre><code>export HIVE_HOME=/usr/local/Celler/hive/3.1.2
+export PATH=$PATH:$HIVE_HOME/bin
+</code></pre>
+
+<h6>数据库中创建hive用户</h6>
+
+<pre><code>create database hive;
+CREATE USER  &#39;hadoop&#39;@&#39;%&#39;  IDENTIFIED BY &#39;mysql&#39;;
+GRANT ALL PRIVILEGES ON  *.* TO &#39;hadoop&#39;@&#39;%&#39; WITH GRANT OPTION;
+flush privileges;
+</code></pre>
+
+<h6>修改配置文件</h6>
+
+<p><code>vim hive-site.xml</code></p>
+
+<h6>Hadoop中创建hive所需仓库</h6>
+
+<pre><code>hadoop fs -mkdir       /tmp
+hadoop fs -mkdir   -p  /user/hive/warehouse
+hadoop fs -chmod g+w   /tmp
+hadoop fs -chmod g+w   /user/hive/warehouse
+</code></pre>
+
+<h6>初始化mysql中的hive库</h6>
+
+<p><code>/usr/local/Cellar/hive/3.1.2/bin/schematool -dbType mysql -initSchema </code></p>
+
+<h6>启动hive的Metastore Server服务进程</h6>
+
+<p><code>hive --service metastore </code></p>
+
+<h6>登陆hive客户端</h6>
+
+<p><code>hive</code></p>
+
+</body>
+</html>
+

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>索引、更新和删除数据</title>
+	</head>
+<body>
+<h1>索引、更新和删除数据</h1>
+
+<hr />
+
+<h2>使用映射来定义各种文档</h2>
+
+<h3>获取当前映射</h3>
+
+<pre><code>curl &#39;localhost:9200/get-tohather/new-events/_mapping?pretty&#39;
+</code></pre>
+
+<h3>定义新的索引</h3>
+
+<pre><code>curl -H &quot;Content-Type: application/json&quot; -XPUT &#39;localhost:9200/get-tohather/new-events/1&#39; -d &#39;{&quot;name&quot;: &quot;Late Night With Elasticsearch&quot;}&#39;
+</code></pre>
+
+<hr />
+
+<h2>用于定义文档字段的核心类型</h2>
+
+<p>Es中一个字段可以是核心类型之一，如字符串或者数值型，也可以是一个从核心类型派生的复杂类型，如数组。</p>
+
+<table>
+<tr><th>核心类型</th><th>取值示例</th></tr>
+<tr><td>字符串</td><td>"elasticsearch"</td></tr>
+<tr><td>数值</td><td>6666</td></tr>
+<tr><td>日期</td><td>2019-12-19T10:00:00.000+00:00</td></tr>
+<tr><td>布尔</td><td>true/false</td></tr>
+</table>
+<h3>字符串类型</h3>
+
+<p><strong>es5.0之后，移除了string类型，string字段被拆分为两种新的数据类型：text用于全文搜索；keyword用于关键词搜索</strong>。</p>
+
+<p>在索引中搜索字符串“elasticsearch”：</p>
+
+<pre><code>curl &#39;localhost:9200/get-tohather/new-events/_search?pretty&#39; -d &#39;{
+	&quot;query&quot;: {
+		&quot;query_string&quot;: {
+			&quot;query&quot;: &quot;elasticsearch&quot;
+}}}&#39; -H &quot;Content-Type:application/json&quot;
+</code></pre>
+
+<p>会得到结果“late night with elasticsearch”：</p>
+
+<pre><code>{
+  &quot;took&quot; : 4,
+  &quot;timed_out&quot; : false,
+  &quot;_shards&quot; : {
+    &quot;total&quot; : 5,
+    &quot;successful&quot; : 5,
+    &quot;skipped&quot; : 0,
+    &quot;failed&quot; : 0
+  },
+  &quot;hits&quot; : {
+    &quot;total&quot; : 1,
+    &quot;max_score&quot; : 0.2876821,
+    &quot;hits&quot; : [
+      {
+        &quot;_index&quot; : &quot;get-tohather&quot;,
+        &quot;_type&quot; : &quot;new-events&quot;,
+        &quot;_id&quot; : &quot;1&quot;,
+        &quot;_score&quot; : 0.2876821,
+        &quot;_source&quot; : {
+          &quot;name&quot; : &quot;Late Night With Elasticsearch&quot;
+        }
+      }
+    ]
+  }
+}
+</code></pre>
+
+<p>Es在索引字符串时，默认的分析器将所有字符转化为小写，然后将字符串分解为单词：</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/es%E5%88%86%E6%9E%90%E5%99%A8%E5%88%86%E8%A7%A3%E5%AD%97%E7%AC%A6%E4%B8%B2.jpg"/></figure>
+
+<p>分析过程生成了四个词条。查询的字符串经过相同处理过程，与文档中的词条进行匹配。</p>
+
+<h4>5.0之前</h4>
+
+<p>默认情况下，index被设置为<code>analyzed</code>，index就会进行上面的处理过程；如果将index设置为<code>not_analyzed</code>，则会忽略这个过程；如果index设置为<code>no</code>，则不会生成词条。</p>
+
+<h4>5.0之后</h4>
+
+<p>string被分为了text(analyzed)、keyword(not analyzed) ，并且index只能设置为true/false，来代替not analyzed/no。</p>
+
+<h3>数值类型</h3>
+
+<p>数值类型可以是浮点数或非浮点数。如果不需要小数，可以选择byte、short、int或者long；如果需要小数，可以选择float和double。</p>
+
+<h3>日期类型</h3>
+
+<p>Date类型用于存储日期和时间。</p>
+
+<p>当索引一个表示日期的字符串时，例如“2013-12-25T09:00:00”，es会解析这个字符串，将其作为long的数值存入Lucene的索引。该long型数值是时间戳。</p>
+
+<p>搜索文档的时候，仍然提供date的字符串，es将这些字符串解析并按照数值来处理。</p>
+
+<p>使用format选项指定日期格式的时候有两种选择：</p>
+
+<ul>
+	<li>使用预定义的日期格式；</li>
+	<li>设置自定义的格式：可以指定时间戳所遵循的模式，例如指定MMMYYYY来来解析Jul 2001这样的日期</li>
+</ul>
+
+<pre><code>curl -XPOST -H &quot;Content-Type:application/json&quot; &#39;localhost:9200/get-tohather/_mapping/new-events&#39; -d &#39;{&quot;new-events&quot;: {&quot;properties&quot;: {&quot;next_event&quot;: {&quot;type&quot;: &quot;date&quot;,&quot;format&quot;: &quot;MMM DD YYYY&quot;}}}}&#39; 
+curl -XPOST -H &quot;Content-Type:application/json&quot; &#39;localhost:9200/get-tohather/new-events&#39; -d &#39;{&quot;name&quot;: &quot;Elasticsearch News&quot;, &quot;first_occurence&quot;: &quot;2011-04-03&quot;, &quot;next_event&quot;: &quot;Oct 25 2013&quot;}&#39;
+</code></pre>
+
+<h3>布尔类型</h3>
+
+<p>Boolean类型用于存储文档中的true/false。</p>
+
+<pre><code>curl -XPOST -H &quot;Content-Type:application/json&quot; &#39;localhost:9200/get-tohather/new-events/1&#39; -d &#39;{&quot;name&quot;: &quot;Broadcasted Elasticsearch News&quot;, &quot;downloadable&quot;: true}&#39;
+</code></pre>
+
+<p>其中<code>downloadable</code>字段会自动映射为boolean，在Lucene的索引中被存储为代表true的T，或者代表false的F。</p>
+
+<hr />
+
+<h2>数组和多字段</h2>
+
+<h3>数组</h3>
+
+<p>如果需要索引拥有多个值的字段，将这些值放入方括号内，如：</p>
+
+<pre><code>curl -XPOST -H &quot;Content-Type:application/json&quot; &#39;localhost:9200/blog/posts/1&#39; -d &#39;{&quot;tags&quot;: [&quot;first&quot;, &quot;initial&quot;]}&#39;
+</code></pre>
+
+<h3>多字段</h3>
+
+<p>数组允许使用同一个设置索引多项数据，多字段允许使用不同的设置，对同一项数据索引多次。</p>
+
+<pre><code>curl -XPOST -H &quot;Content-Type:application/json&quot; &#39;localhost:9200/blog/_mapping/posts&#39; -d &#39;{&quot;posts&quot;: {&quot;properties&quot;: {&quot;tags&quot;: {&quot;type&quot;: &quot;text&quot;, &quot;fields&quot;: {&quot;verbatim&quot;: {&quot;type&quot;: &quot;keyword&quot;, &quot;index&quot;: true}}}}}}&#39;
+</code></pre>
+
+<p>这种写法默认的tags字段是analyzed，第二个字段tags.verbatim是not analyzed，将原来的tags当作单一的词条处理。</p>
+
+<p>要搜索analyzed版本的tags字段，就像普通搜索其他字符串一样；如果要搜索not analyzed版本的字段，就要指定完整的路径：tags.verbatim。</p>
+
+<hr />
+
+<h2>使用预定义字段</h2>
+
+<p>Es提供了一些预定义的字段，可以使用它们来增加新的功能。和之前看到的字段相比，这些预定义的字段在三个方面有所不同：</p>
+
+<ul>
+	<li>通常不用部署预定义的字段，es会做这件事情。例如可以使用<code>_timestamp</code>字段来记录文档索引的日期；</li>
+	<li>它们揭示了字段相关的功能。例如<code>_ttl(time to live)</code>字段使得es可以在指定的时间过后删除某些文档；</li>
+	<li>预定义的字段总是以下划线<code>_</code>开头。这些字段为文档添加新的元数据，es将这些元数据用于不同的特性，从存储原始的文档，到存储用于自动过期的时间戳信息</li>
+</ul>
+
+<p>重要的预定义字段可以分为以下几类：</p>
+
+<ul>
+	<li>控制如何存储和搜索文档：<code>_source</code>在索引文档的时候存储原始的json文档；<code>_all</code>将所有的字段一起索引；</li>
+	<li>唯一标识文档；</li>
+	<li>为文档增加新的属性；</li>
+	<li>控制文档路由到哪些分片；</li>
+</ul>
+
+<hr />
+
+<h2>删除数据</h2>
+
+<p>Es中删除操作分为几种：</p>
+
+<ul>
+	<li>删除单个文档或者一组文档：这样做的时候es只是将它们标记为删除，所以它们不会再出现在搜索结果中，稍后es会通过异步的方式将它们彻底从索引中移出；</li>
+	<li>删除整个索引：这是删除多组文档的特例，但是性能会更好。主要工作就是移除和那个索引相关的所有文档，几乎是瞬间就能完成的；</li>
+	<li>关闭索引：关闭的索引不允许读取或者写入，数据也不会加载到内存，但是索引还是保留在磁盘上</li>
+</ul>
+
+<h3>删除文档</h3>
+
+<h4>删除单个文档</h4>
+
+<pre><code>curl -XDELETE &#39;localhost:9200/get-togather/group/1&#39;
+</code></pre>
+
+<p>这样的操作只是将文件标记为已删除，在分段进行合并时，才会被移除。</p>
+
+<h4>删除映射类型和删除查询匹配的文档</h4>
+
+<p>也可以删除整个映射类型，包括映射本身和其中索引的全部文档：</p>
+
+<pre><code>curl -XDELETE &#39;localhost:9200/get-togather/group&#39;
+</code></pre>
+
+<p>也可以查询某个类型中的文档并删除它们，es允许使用通过查询删除（delete by query）的API指定自己的查询，查找想要删除的文档：</p>
+
+<pre><code>curl XDELETE &#39;localhost:9200/get-togather/_query?q=elasticsearch&#39;
+</code></pre>
+
+<h3>删除索引</h3>
+
+<pre><code>curl -XDELETE &#39;localhost:9200/get-togather&#39;
+</code></pre>
+
+<p>通过逗号分隔索引名称还可以删除多个索引。</p>
+
+<p>删除索引很快，因为它基本上就是移除了和索引分片相关的文件。</p>
+
+</body>
+</html>
+

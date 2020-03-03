@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Hadoop分布式文件系统</title>
+	</head>
+<body>
+<h1>Hadoop分布式文件系统</h1>
+
+<p>当数据集的大小超过一台独立的物理计算机的存储能力时，就有必要对它进行分区并存储到若干台单独的计算机上。管理网络中跨多台计算机存储的文件系统称为分布式文件系统。</p>
+
+<hr />
+
+<h3>HDFS的特性</h3>
+
+<ul>
+	<li>支持超大文件</li>
+	<li>流式数据访问：HDFS处理的数据规模都比较大，应用一次需要访问大量的数据，HDFS使应用能够以流的形式访问数据集，注意是数据的吞吐量，不是访问的速度</li>
+	<li>简化的一致性模型：大部分HDFS程序操作文件需要一次写入、多次读取。在HDFS中一个文件一旦经过创建、写入、关闭后，一般就不会修改了，这样简单的一致性模型有利于提高吞吐量</li>
+	<li>检测和快速应对硬件故障：对于大集群来说节点故障的几率高，HDFS设计成遇到故障时能够继续运行且不让用户察觉到明显的中断</li>
+	<li>不适合低时间延迟的数据访问：HDFS是为高效数据吞吐量应用优化的，会以提高时间延迟为代价</li>
+	<li>不适合大量的小文件：由于namenode将文件系统的元数据存储在内存中，因此该文件系统所能存储的文件总数受限于namenode的内存容量</li>
+	<li>不支持多用户写入，任意修改文件：HDFS中的文件写入只支持单个写入者，而且写操作总是以“只添加”的方式在文件末尾写数据</li>
+</ul>
+
+<hr />
+
+<h3>HDFS的概念</h3>
+
+<h5>数据块</h5>
+
+<p>每个磁盘都有默认的数据块大小，这是磁盘进行数据读/写的最小单位。构建于单个磁盘之上的文件系统通过磁盘快来管理文件系统中的块，该文件系统块的大小可以是磁盘块的整数倍。</p>
+
+<p>HDFS同样也有块的概念，默认128MB。HDFS上的文件划分为多个块（chunk），作为独立的存储单元。HDFS中小于一个块大小的文件不会占据整个块的空间。</p>
+
+<p><strong>HDFS的块比磁盘的块大的目的</strong>：最小化寻址开销，如果块足够大，从磁盘传输数据的时间会明显大于定位这个块开始位置所需的时间，因此传输一个由多个块组成的大文件的时间取决于磁盘传输速率。</p>
+
+<p>对分布式文件系统的块进行抽象的好处：</p>
+
+<ul>
+	<li>一个文件的大小可以大于网络中任意一个磁盘的容量。文件的所有块并不需要存储在同一个磁盘上，因此它们可以利用集群上的任意一个磁盘进行存储</li>
+	<li>使用块作为存储单元大大简化了存储子系统的设计。将存储子系统的处理对象设置为块，可简化存储管理（由于块的大小是固定的，因此计算单个磁盘能存储多少个块就相对容易），同时也消除了对元数据的顾虑（块只是要存储的大块数据，而文件的元数据，如权限信息，并不需要与块一同存储，这样一来，其他系统就可以单独管理这些元数据）</li>
+	<li>适合用于数据备份而提高数据容错能力和提高可用性。将每个块复制到少数几个物理上相互独立的机器，可以确保在块、磁盘或者机器发生故障时数据不会丢失</li>
+</ul>
+
+<h5>块缓存</h5>
+
+<p>通常datanode从磁盘中读取数据，但对于访问频繁的文件，其对应的块可能被显式地缓存在datanode的内存中，以堆外块缓存（off-heap block cache）的形式存在。</p>
+
+<p>默认情况下一个块仅缓存在一个datanode的内存中，也可以针对每个文件配置datanode的数量。</p>
+
+<h5>数据备份</h5>
+
+<p>HDFS通过备份数据块的形式来实现容错，NameNode负责各个数据块的备份，DataNode通过心跳的方式定期向NameNode发送自己节点上的Block报告，这个报告包含了DataNode节点上所有数据块的列表。</p>
+
+<p>数据副本的分布位置直接影响着HDFS的可靠性和性能。</p>
+
+<p>一个大型的HDFS文件系统一般都是需要跨很多机架，不同机架之间的数据传输需要经过网关。如果所有副本放在不同机架，可以防止机架失败导致数据块不可用，又可以在读数据时利用到多个机架的带宽，并且也容易实现负载均衡，但是会影响写数据的效率，因此一般把两个副本放在同一机架，另外一个副本放在不同的机架上。</p>
+
+<p>读的时候，HDFS会选择最近的一个副本给请求者。</p>
+
+<p>当NameNode节点启动时，会进入安全模式阶段。在此阶段，DataNode会向NameNode上传它们数据块的列表，让NameNode得到块的位置信息，并对每个文件对应的数据块副本进行统计。满足最小副本条件时，系统退出安全模式。安全模式下系统处于只读状态，NameNode不会处理任何块的复制和删除命令。</p>
+
+<h5>HDFS中的沟通协议</h5>
+
+<p>所有的HDFS中的沟通协议都是基于tcp/ip协议，一个客户端通过指定的tcp端口与NameNode机器建立连接，通过ClientProtocol协议与NameNode交互。而DataNode则通过DataNode Protocol协议与NameNode进行沟通。HDFS的RPC对ClientProtocol和DataNode Protocol做了封装。按照HDFS的设计，NameNode不会主动发起任何请求，只会被动接受来自客户端或DataNode的请求。</p>
+
+<h5>可靠性保证</h5>
+
+<p>DataNode会定期向NameNode发送心跳，若NameNode指定时间间隔内没有收到心跳，认为此DataNode节点失败。此时NameNode把失败节点的数据备份到另外一个健康的节点，保证集群始终维持指定数量的副本。</p>
+
+<hr />
+
+<h3>HDFS架构设计</h3>
+
+<p>HDFS采用了主从体系结构，由NameNode、SecondaryNameNode、DataNode组成。</p>
+
+<figure><img src="/Users/xerxes/note/hadoop/src/HDFS%E6%9E%B6%E6%9E%84.jpg"/></figure>
+
+<h5>NameNode</h5>
+
+<p><strong>NameNode负责管理整个分布式文件系统的元数据</strong>。包括文件目录树结构、文件到数据块的映射关系、Block副本机器存储位置等各种管理数据。</p>
+
+<p>这些数据保持在内存中，同时在磁盘保存两个元数据管理文件：fsimage和editlog。这两个文件相结合可以构造出完整的内存数据。</p>
+
+<ul>
+	<li>fsimage是内存命名空间元数据在外存的镜像文件</li>
+	<li>editlog则是各种元数据操作的write-ahead-log文件，在体现到内存数据变化前首先会将操作计入editlog中以防止丢失</li>
+</ul>
+
+<p>NameNode还负责DataNode的状态监控，两者通过短时间间隔的心跳来传递管理信息和数据信息。通过这种方式的信息传递，NameNode可以获知每个DataNode保存的各个块的信息、DataNode的健康状态、命令DataNode启动停止等。如果发现某个DataNode节点发生故障，NameNode会将其负责的Block在其他DataNode机器增加相应的备份以维护数据可用性。</p>
+
+<p>NameNode元信息不包含每个块的位置信息。这些信息会在NameNode启动时从各个DataNode获取并保存在内存中，因为这些信息会在系统启动时由数据节点重建。把块位置信息放在内存中，读取数据时减少查询时间。</p>
+
+<h5>DataNode</h5>
+
+<p>DataNode是文件系统的工作节点，它负责存储数据块，也负责为系统客户端提供数据块的读写服务，同时还会根据NameNode的指示来进行创建、删除和复制等操作。</p>
+
+<p>此外它还会通过心跳定期向NameNode发送所存储文件块列表信息。当对HDFS文件系统进行读写时，NameNode告知客户端每个数据驻留在哪个DataNode，客户端直接与DataNode进行通信。</p>
+
+<p>DataNode还会与其他DataNode通信，复制这些块以实现冗余。</p>
+
+<h5>Secondary NameNode</h5>
+
+<p>Secondary NameNode的职责并非是NameNode的热备机，而是定期从NameNode拉取fsimage和editlog文件并对这两个文件进行合并，形成新的fsimage文件并传回NameNode。</p>
+
+<p>这样做的目的是为了减轻NameNode的工作压力，NameNode本身并不做这种合并操作，所以本质上Secondary NameNode是个提供检查点功能服务的服务器。</p>
+
+<p>合并fsimage和editlog的流程：</p>
+
+<ol>
+	<li>合并之前告知NameNode把所有的操作写到新的editlog并将其命名为edits.new</li>
+	<li>Secondary NameNode从NameNode请求fsimage和editlog文件</li>
+	<li>Secondary NameNode吧fsimage和editlog合并成新的fsimage文件</li>
+	<li>NameNode从Secondary NameNode获取合并好的新的fsimage并将旧的替换掉，并把editlog用第一步创建的edits.new文件替换掉</li>
+	<li>更新fstime文件的检查点，这个文件保存了最后一个检查点的时间戳</li>
+</ol>
+
+<hr />
+
+<h3>NameNode联盟</h3>
+
+<p>Hadoop1.x中的HDFS由于采取单一NN的架构，会导致如下问题：</p>
+
+<ul>
+	<li>命名空间可扩展性差：命名空间指HDFS中的树形目录和文件结构以及文件对应的Block信息。在单一NN情形下，因为所有命名空间数据都需要加载到内存，所以机器物理内存的大小限制了整个HDFS能够容纳文件的最大个数</li>
+	<li>性能可扩展性差：由于所有元数据请求都需要经过NN，单一NN导致所有请求都由一台服务器响应，容易达到机器吞吐极限，造成系统整体性能的提升无法做到水平扩展</li>
+	<li>隔离性差：多租户环境下，单一NN的架构无法在租户之间进行隔离</li>
+</ul>
+
+<p>Hadoop2.0开始，HDFS通过NameNode联盟的方式解决上述问题。如果将HDFS的功能高度抽象，可以分为三层：底层是物理存储层，其上是数据块管理层，最高层是命名空间管理层。</p>
+
+<p>将一个大的命名空间切割成若干子命名空间，由命名空间的元数据和一个数据块池组成，数据块池包含该命名空间下文件的所有数据块，每个子命名空间由单独的NN来负责管理。</p>
+
+<p>NN之间独立，相互之间无需做任何协调工作。</p>
+
+<p>所有DataNode被多个NN共享，仍然充当实际数据块的存储场所。且周期性地向所有 NameNode 发送心跳和块报告，并执行来自所有 NameNode 的命令。</p>
+
+<p>而子命名空间和DataNode之间由数据块管理层作为中介建立映射关系，数据块管理层由若干数据块池构成，每个数据块唯一属于某个固定的数据块池，而一个子命名空间可以对应多个数据块池。</p>
+
+<figure><img src="/Users/xerxes/note/hadoop/src/%E6%8A%BD%E8%B1%A1%E7%9A%84NameNode%E8%81%94%E7%9B%9F.jpg"/></figure>
+
+<ul>
+	<li>一个 block pool 由属于同一个 namespace 的数据块组成，每个 DataNode 可能会存储集群中所有 block pool 的数据块；</li>
+	<li>每个 block pool 内部自治，也就是说各自管理各自的 block，不会与其他 block pool 交流，如果一个 NameNode 挂掉了，不会影响其他 NameNode;</li>
+	<li>某个 NameNode 上的 namespace 和它对应的 block pool 一起被称为 namespace volume，它是管理的基本单位。当一个 NameNode/namespace 被删除后，其所有 DataNode 上对应的 block pool 也会被删除，当集群升级时，每个 namespace volume 可以作为一个基本单元进行升级。</li>
+</ul>
+
+<hr />
+
+<h3>HA方案</h3>
+
+<figure><img src="/Users/xerxes/note/hadoop/src/HDFS2.0HA.jpg"/></figure>
+
+<h5>避免单点失效问题</h5>
+
+<p>主控服务器由Active NameNode和Standby NameNode一主一从两台服务器构成，ANN是当前响应客户端请求的服务器，SNN作为冷备份或者热备份机，在ANN发生故障时接管客户端请求并由SNN转换为ANN。</p>
+
+<p>为了能够使得SNN成为热备份机，SNN的所有元数据需要与ANN的元数据保持一致，HA方案通过以下两点来保证这一要求。</p>
+
+<ul>
+	<li>使用第三方共享存储（NAS+NFS）来保存目录文件等命名空间元数据（editlog）。ANN将元数据的更改信息写入第三方存储，SNN从第三方存储不断获取更新的元数据并体现在内存元数据中，以此来达到两者的数据一致性。但这个方案仍然存在第三方存储发生故障的问题。</li>
+	<li>所有DataNode同时将心跳信息发送给ANN和SNN。由于NN中的Block Map信息并不存储在命名空间元数据中，而是在NN启动时从各个DataNode获得，为了能够使得故障切换时新ANN避免这一耗时行为，DataNode同时将信息发送给ANN和SNN。</li>
+</ul>
+
+<h5>实现故障自动切换</h5>
+
+<p>HA解决方案采用独立于NN之外的故障切换控制器（Failover Controller）。</p>
+
+<p>FC用于监控NN服务器的硬件、操作系统和NN本身等各种健康状况信息，并不断向ZooKeeper写入心跳信息；zk在此用作领导者选举，当ANN发生故障时，zk重新选举SNN作为主控服务器，FC通知SNN从备份机转换为主控机。</p>
+
+<p>在Hadoop系统刚启动时，两台服务器都是SNN，通过zk选举使其中一台服务器成为ANN。</p>
+
+<p>ZKFC作为NameNode机器上一个独立的进程启动，它启动时会创建两个主要的内部组件：</p>
+
+<ul>
+	<li>HealthMonitor：主要负责监测NameNode的健康状态，监测到NameNode的状态发生变化，会回调ZKFailoverController的相应方法进行自动的主备选举</li>
+	<li>ActiveStandbyElector：主要负责完成自动的主备选举，内部封装了zk的处理逻辑，一旦zk完成主备选举，会回调ZKFailoverController的相应方法进行NameNode的主备状态切换</li>
+</ul>
+
+<h5>自动触发主备选举</h5>
+
+<p>NameNode在选举成功后，会在你zk上创建一个<code>/hadoop-ha/${dfs.nameservices}/ActiveStandbyElectorLock</code>节点，落选的备NameNode会通过Watcher监听这个节点的状态变化事件，ZKFC的ActiveStandbyElector会监听这个节点的NodeDeleted事件。</p>
+
+<p>如果HealthMonitor监测到NameNode的状态异常，ZKFC会主动删除当前在zk上建立的临时节点，这样ActiveStandbyElector收到NodeDeleted事件后马上再次进入到创建<code>/hadoop-ha/${dfs.nameservices}/ActiveStandbyElectorLock</code>节点的流程，如果创建成功，这个本来处于 Standby 状态的 NameNode 就选举为主 NameNode 并随后开始切换为 Active 状态。</p>
+
+<h5>HDFS 脑裂问题</h5>
+
+<p>为了防止故障切换过程出现脑裂，即整个系统同时有两个或者多个活跃的主控服务器，需要在3处采取隔离措施</p>
+
+<ul>
+	<li>第三方共享存储：保证在任一时刻，只有一个NN能够写入</li>
+	<li>DataNode：保证只有一个NN发出与管理数据副本有关的删除命令</li>
+	<li>客户端：保证同一时刻只能有一个NN能够对客户端请求发出正确响应</li>
+</ul>
+
+<p>具体实现</p>
+
+<ol>
+	<li>ActiveStandbyElector 为了实现 fencing，会在成功创建 Zookeeper 节点 <code>hadoop-ha/${dfs.nameservices}/ActiveStandbyElectorLock</code> 从而成为 Active NameNode 之后，创建另外一个路径为&nbsp;<code>/hadoop-ha/${dfs.nameservices}/ActiveBreadCrumb</code>&nbsp;的持久节点，这个节点里面保存了这个 Active NameNode 的地址信息；</li>
+	<li>Active NameNode 的 ActiveStandbyElector 在正常的状态下关闭 Zookeeper Session 的时候，会一起删除这个持久节点；</li>
+	<li>但如果 ActiveStandbyElector 在异常的状态下 Zookeeper Session 关闭 (比如前述的 Zookeeper 假死)，那么由于 <code>/hadoop-ha/${dfs.nameservices}/ActiveBreadCrumb</code> 是持久节点，会一直保留下来，后面当另一个 NameNode 选主成功之后，会注意到上一个 Active NameNode 遗留下来的这个节点，从而会回调 ZKFailoverController 的方法对旧的 Active NameNode 进行 fencing</li>
+</ol>
+
+<p>进行fencing的时候会执行以下操作：</p>
+
+<ol>
+	<li>首先尝试调用这个旧ANN的HAServiceProtocol RPC接口的transitionToStandby方法，看能不能把它转换为Standby状态</li>
+	<li>如果transitionToStandby方法调用失败，就执行Hadoop配置文件中与定义的隔离措施。Hadoop目前主要提供两种，通常选第一种
+
+		<ul>
+			<li>sshfence：通过SSH登陆到目标机器上，执行命令fuser将对应的进程杀死</li>
+			<li>shellfence：执行一定用户自定义的shell脚本来将对应的进程隔离</li>
+		</ul></li>
+</ol>
+
+<p>成功fencing后，选主成功的ActiveStandbyElector才会回调ZKFailoverController 的&nbsp;becomeActive&nbsp;方法将对应的 NameNode 转换为 Active 状态，开始对外提供服务。</p>
+
+<hr />
+
+<h3>HDFS文件读取过程</h3>
+
+<figure><img src="/Users/xerxes/note/hadoop/src/HDFS%E6%96%87%E4%BB%B6%E8%AF%BB%E5%8F%96%E8%BF%87%E7%A8%8B.jpg"/></figure>
+
+<p>HDFS有一个DistributedFileSystem实例，客户端通过调用这个实例的open()方法就可以打开系统中希望读取的文件。</p>
+
+<p>HDFS通过RPC调用NameNode获取文件块的位置信息，对于文件的每一个块，NameNode会返回含有该块副本的DataNode的节点地址；客户端根据网络拓扑来确定它与每一个DataNode的位置信息，从离他最近的DataNode获取数据块的副本，最理想的情况是数据块就存储在客户端所在的节点上。</p>
+
+<p>HDFS返回一个FSDataInputStream对象，FSDataInputStream类转而封装成DFSDataInputStream对象，这个对象管理着与DataNode和NameNode的I/O，具体过程：</p>
+
+<ol>
+	<li>客户端发起读请求</li>
+	<li>客户端与NameNode得到文件的块及位置信息列表</li>
+	<li>客户端直接和DataNode交互并行读取数据</li>
+	<li>一旦 Client 获得了所有必须的 block，它就会将这些 block 组合起来形成一个文件</li>
+	<li>读取完成关闭连接</li>
+</ol>
+
+<p>当FSDataInputStream与DataNode通信时遇到错误，它会选取另一个较近的DataNode，并为出故障的DataNode做标记以免重复向其读取数据。FSDataInputStream还会对读取的数据块进行校验和确认，发现块损坏时也会重新读取并通知NameNode。</p>
+
+<hr />
+
+<h3>HDFS文件写入过程</h3>
+
+<figure><img src="/Users/xerxes/note/hadoop/src/HDFS%E6%96%87%E4%BB%B6%E5%86%99%E5%85%A5%E8%BF%87%E7%A8%8B.jpg"/></figure>
+
+<p>HDFS有个DistributedFileSystem实例，客户端通过调用这个实例的create()方法就可以创建文件。DistributedFileSystem会发送给NameNode一个RPC调用，在文件系统的命名空间创建一个新文件，在创建文件前NameNode会做一些检查，如文件是否存在，客户端是否有创建权限等，若检查通过，NameNode为创建文件写入一条记录到本地磁盘的editlog，如不通过向客户端抛出IOException。</p>
+
+<p>创建成功之后DistributedFileSystem会返回一个FSDataOutputStream对象，客户端由此开始写入数据。</p>
+
+<p>同读文件过程一样，FSDataOutputStream类转而封装成DFSDataOutputStream对象,这个对象管理着与DataNode和NameNode的I/O，具体过程：</p>
+
+<ol>
+	<li>客户端在向NameNode请求之前写入文件数据到本地系统的一个临时文件</li>
+	<li>待临时文件达到块大小时开始向NameNode请求DataNode信息</li>
+	<li>NameNode在文件系统中创建文件并返回给客户端一个数据块及其对应DataNode的地址列表（列表中包含副本存放的地址）</li>
+	<li>客户端通过上一步得到的信息把创建临时文件块flush到列表中的第一个DataNode
+
+		<ol>
+			<li>首先第一个DataNode是以数据包（一般4KB）的形式从客户端接收数据，DataNode在把数据包写入到本地磁盘的同时会向第二个DataNode（副本节点）发送数据</li>
+			<li>第二个DataNode把接收到的数据包写入本地磁盘的同时向第三个DataNode发送数据包</li>
+			<li>第三个DataNode开始向本地磁盘写入数据包。此时数据包以流水线的形式被写入和备份到所有DataNode节点</li>
+			<li>传送管道中的每个DataNode节点在接收到数据后都会向前面那个DataNode发送一个ACK，最终第一个DataNode向客户端发送一个ACK</li>
+			<li>当客户端接收到ACK后，数据块被认为已经持久化到所有节点。然后客户端向NameNode发送一个确认</li>
+			<li>如果管道中任何一个DataNode失败，管道关闭。数据将会继续写到剩余的DataNode中。同时NameNode会被告知待备份状态，NameNode会继续备份数据到新的可用的节点</li>
+			<li>数据块都会通过计算校验和来检测数据的完整性，校验和以隐藏文件的形式被单独存放在HDFS中，供读取时进行完整性检验</li>
+		</ol></li>
+	<li>当文件关闭，NameNode会提交这次文件创建，此时文件在文件系统可见</li>
+</ol>
+
+<hr />
+
+<h3>HDFS文件删除过程</h3>
+
+<ol>
+	<li>一开始删除文件，NameNode只是重命名被删除的文件到/trash目录，因为重命名操作只是元信息的变动，所以整个过程非常快。在/trash中文件被保留一定间隔的时间（默认6小时），在这期间只需将文件从/trash移出即可恢复</li>
+	<li>达到指定时间，NameNode将会把文件从命名空间中删除</li>
+	<li>标记删除的文件块释放空间，HDFS文件系统显示空间增加</li>
+</ol>
+
+</body>
+</html>
+

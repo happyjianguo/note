@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Elasticsearhc的分布式一致性之选主</title>
+	</head>
+<body>
+<h1>Elasticsearhc的分布式一致性之选主</h1>
+
+<hr />
+
+<h2>es集群构成</h2>
+
+<p>Es集群由许多节点（node）构成，node可以有不同的类型，通过配置可以产生四种不同类型的节点：</p>
+
+<pre><code>conf/elasticsearch.yml:
+    node.master: true/false
+    node.data: true/false
+</code></pre>
+
+<p>当node.master为true时，其表示这个node是一个master的候选节点，可以参与选举，在ES的文档中常被称作master-eligible node，类似于MasterCandidate。ES正常运行时只能有一个master(即leader)，多于1个时会发生脑裂。</p>
+
+<p>当node.data为true时，这个节点作为一个数据节点，会存储分配在该node上的shard的数据并负责这些shard的写入、查询等。</p>
+
+<p>当node.master和node.data都为false时，这个节点可以作为一个类似proxy的节点，接受请求并进行转发、结果聚合等。</p>
+
+<hr />
+
+<h2>ZenDiscovery</h2>
+
+<p>Es没有依赖zk，而是自己实现了一套用于节点发现和选主等功能的模块：ZenDiscovery。</p>
+
+<p>节点发现依赖配置：</p>
+
+<pre><code>conf/elasticsearch.yml:
+    discovery.zen.ping.unicast.hosts: [1.1.1.1, 1.1.1.2, 1.1.1.3]
+</code></pre>
+
+<p>这个配置可以看作是，在本节点到每个hosts中的节点建立一条边，当整个集群所有的node形成一个联通图时，所有节点都可以知道集群中有哪些节点，不会形成孤岛。</p>
+
+<hr />
+
+<h2>Master选举</h2>
+
+<p>Es集群中节点数量有限，单个节点能够处理和其他所有节点间的连接，集群中不会出现节点频繁加入和离开的情况，因此ZenDiscovery中实现了比较简单的Bully算法，并做了些改动。</p>
+
+<h3>谁发起选举，何时选举</h3>
+
+<p>Master选举由master-eligible节点发起，当一个master-eligible节点发现满足以下条件时发起选举：</p>
+
+<ul>
+	<li>该master-eligible节点当前不是master节点；</li>
+	<li>该master-eligible节点通过ZenDiscovery模块的ping操作询问其已知的集群其他节点，没有任何节点连接到master；</li>
+	<li>包括本节点在内，当前已有超过<code>minimun_master_nodes</code>个节点没有连接到master</li>
+</ul>
+
+<h3>选举谁</h3>
+
+<p>Es选举排序后的第一个master-eligible node作为master节点：</p>
+
+<pre><code>public MasterCandidate electMaster(Collection&lt;MasterCandidate&gt; candidates) {
+        assert hasEnoughCandidates(candidates);
+        List&lt;MasterCandidate&gt; sortedCandidates = new ArrayList&lt;&gt;(candidates);
+        sortedCandidates.sort(MasterCandidate::compare);
+        return sortedCandidates.get(0);
+}
+</code></pre>
+
+<p>排序方式：</p>
+
+<pre><code>public static int compare(MasterCandidate c1, MasterCandidate c2) {
+    // we explicitly swap c1 and c2 here. the code expects &quot;better&quot; is lower in a sorted
+    // list, so if c2 has a higher cluster state version, it needs to come first.
+    int ret = Long.compare(c2.clusterStateVersion, c1.clusterStateVersion);
+    if (ret == 0) {
+        ret = compareNodes(c1.getNode(), c2.getNode());
+    }
+    return ret;
+}
+</code></pre>
+
+<p>当clusterStateVersion越大，优先级越高。这是为了保证新Master拥有最新的clusterState(即集群的meta)，避免已经commit的meta变更丢失。因为Master当选后，就会以这个版本的clusterState为基础进行更新。(一个例外是集群全部重启，所有节点都没有meta，需要先选出一个master，然后master再通过持久化的数据进行meta恢复，再进行meta同步)。</p>
+
+<p>当clusterStateVersion相同时，节点的Id越小，优先级越高。即总是倾向于选择Id小的Node，这个Id是节点第一次启动时生成的一个随机字符串。之所以这么设计，应该是为了让选举结果尽可能稳定，不要出现都想当master而选不出来的情况。</p>
+
+<h3>何时选举成功</h3>
+
+<p>当一个master-eligible node发起一次选举时，它会按照排序方式选出一个它认为的master；</p>
+
+<p>假设A选B当master，A会向B发送join请求，此时：</p>
+
+<ul>
+	<li>如果B已经成为master，B就会把A加入到集群中，然后发布最新的<code>cluster_state</code>，最新的<code>cluster_state</code>会包含A的信息；等新的<code>cluster_state</code>发布到A的时候，A就算完成join了；</li>
+	<li>如果B正在竞选master，那么B会把这次join当作一次投票；此时A会等待一段时间，看B是否真的成为master，直到超时或者有别的节点竞选成为master；</li>
+	<li>如果B认为自己不是master，那么B会拒绝这次join，此时A进行下一轮选举</li>
+</ul>
+
+<p>假设A选自己当master，此时：</p>
+
+<ul>
+	<li>A会等别的节点来join，当收集到超过半数的选票时，认为自己成为了master，然后变更<code>cluster_state</code>中的master node为自己，并向集群发布这一消息</li>
+</ul>
+
+<h3>如何保证不脑裂</h3>
+
+<p>为了避免产生脑裂，ES采用了常见的分布式系统思路，保证选举出的master被多数派(quorum)的master-eligible node认可，以此来保证只有一个master。这个quorum通过以下配置进行配置：</p>
+
+<pre><code>conf/elasticsearch.yml:
+    discovery.zen.minimum_master_nodes: 2
+</code></pre>
+
+<p>理论上es集群中的节点得到超过半数支持才能称为master，不会出现脑裂情况，但是有一种场景下，B投给A一票之后，A迟迟没有成为master，B超时进行下一轮投票，此时发现集群里多了一个node0，B改投票给0，而此时A和0都在等待选票。这种场景下B就投了两票给不同的节点。</p>
+
+<blockquote>
+<p>Raft算法中引入选举周期（term）的概念，保证每个term中每个成员只能投一票，如果需要再投就会进入下一个选举周期term+1。假如最后出现两个节点都认为自己是master，那么肯定有一个term要大于另一个term，而且因为两个term都收集到了多数派的选票，所以多数节点的term是较大的那个，保证了term小的master不可能commit任何状态变更（commit需要多数派节点先持久化日志成功，由于有term检测，不可能达到多数派持久化条件），这就保证了集群的状态变更是一致的。</p>
+</blockquote>
+
+<p>而es截止6.2版本并没有解决这个问题，当出现两个master时，两个master都会向集群发布状态变更，这个发布过程也是两阶段的：先保证多数派node接受这次变更，然后再要求所有node commit这次变更。</p>
+
+<p>不过脑裂情况很快会自动恢复，因为不一致发生后某个master再次发布<code>cluster_state</code>时就会发现无法到多数派条件，或者是发现它的follower并不构成多数派尔自动降级为candidate。</p>
+
+<hr />
+
+<h2>错误检测</h2>
+
+<h3>MasterFaultDetection和NodesFaultDetection</h3>
+
+<p>这里的错误检测可以理解为类似心跳的机制，有两类错误检测，一类是master定期检测集群内其他的node，另一类是集群内其他node定期检测当前集群的master，检测方式就是定期执行ping请求。</p>
+
+<p>如果master检测到某个node连不上，会执行removeNode，将节点从<code>cluster_state</code>中移除，并发布新的<code>cluster_state</code>；当各个模块apply新的<code>cluster_state</code>时，就会执行恢复操作，比如选择新的primaryShard或者replica，进行数据复制等。</p>
+
+<p>如果某个node发现master连不上，会清空pending在内存中还未commit的<code>new cluster_state</code>，然后发起rejoin，重新加入集群，如果达到选举条件则触发新master选举。</p>
+
+<h3>rejoin</h3>
+
+<p>如果master发现自己已经不满足多数派条件（&gt;=minimumMasterNodes），需要主动退出master状态并执行rejoin以避免脑裂。</p>
+
+<p>触发这一操作的情况有几种：</p>
+
+<ul>
+	<li>当master发现有node连不上会执行removeNode，执行时会判断剩余的node是否满足多数派条件，如果不满足则执行rejoin；</li>
+	<li>发布新的<code>cluster_state</code>是分为send和commit两阶段，send阶段要求多数派成功，然后再进行commit。如果send阶段没有实现多数派返回成功，那么可能是有了新的master或者无法连接到多数派个节点，则master执行rejoin；</li>
+	<li>对其他节点进行定期心跳检测时，发现有其他node也是master，此时会比较自己与另一个master的<code>cluster_state</code>的version，谁的version大谁成为master，version小的执行rejoin</li>
+</ul>
+
+<hr />
+
+<h2>集群扩缩容</h2>
+
+<h3>扩容DataNode</h3>
+
+<p>假设一个es集群存储或者计算资源不够，就需要进行扩容。扩容DataNode时，进行配置：</p>
+
+<pre><code>conf/elasticsearch.yml:
+    node.master: false
+    node.data: true
+    cluster.name: es-cluster
+    node.name: node_Z
+    discovery.zen.ping.unicast.hosts: [&quot;x.x.x.x&quot;, &quot;x.x.x.y&quot;, &quot;x.x.x.z&quot;]
+</code></pre>
+
+<p>然后启动node，node会自动加入集群，集群会自动进行rebalance，或者通过reroute api进行手动操作。</p>
+
+<h3>缩容DataNode</h3>
+
+<p>首先需要选择缩容的node，然后把这个node的shards迁移到其他节点，方法是先设置allocation规则，禁止分配shard到要缩容的机器，然后让集群进行rebalance。</p>
+
+<pre><code>PUT _cluster/settings
+{
+  &quot;transient&quot; : {
+    &quot;cluster.routing.allocation.exclude._ip&quot; : &quot;10.0.0.1&quot;
+  }
+}
+</code></pre>
+
+<p>等节点上的数据迁移完成，节点可以安全下线。</p>
+
+<h3>扩容MasterNode</h3>
+
+<p>为了避免脑裂，es采用多数派的策略，添加新的master-eligible node需要更改<code>discovery.zen.minimum_master_nodes</code>参数的值为新集群的多数派的个数。</p>
+
+<h3>缩容MasterNode</h3>
+
+<p>与扩容流程相反，先把节点缩下来，再把quorum数调下来。</p>
+
+</body>
+</html>
+

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>倒排索引</title>
+	</head>
+<body>
+<h1>倒排索引</h1>
+
+<blockquote>
+<p>倒排索引是实现单词-文档矩阵的一种具体存储形式。通过倒排索引，可以根据单词快速获取包含着个单词的文档列表。</p>
+</blockquote>
+
+<hr />
+
+<h3>原理</h3>
+
+<p><strong>倒排索引是per field的，一个字段有一个自己的倒排索引</strong>。</p>
+
+<p>倒排索引中每一个term对应一个posting list，posting list是一个int数组，存储了所有符合这个term的文档id。</p>
+
+<p><strong>如果有很多term，为了快速找到某个term，就有了term dictionary</strong>。</p>
+
+<p>有了term dictionary，可以用logN次磁盘查找找到term。但是磁盘的随机读操作仍然很多。</p>
+
+<p><strong>为了减少读磁盘，就有了term index</strong>。</p>
+
+<p>Term index类似一个前缀树，这棵树不会包含所有的term，包含的是term的一些前缀。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/%E5%80%92%E6%8E%92%E7%B4%A2%E5%BC%95.jpg"/></figure>
+
+<p>通过term index快速定位到term dictionary的某个offset，然后从这个位置顺序查找。再加上一些压缩技术（Lucene Finite State Transducers），term index的尺寸可以只有所有term的尺寸的几十分之一，使得用内存缓存整个term index变成可能。</p>
+
+<p><strong>term dictionary在磁盘上以分block的方式保存</strong>，一个block内部利用公共前缀压缩。</p>
+
+<hr />
+
+<h3>Lucene索引文件构成</h3>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/Lucene%E7%B4%A2%E5%BC%95%E6%96%87%E4%BB%B6%E6%9E%84%E6%88%90.jpg"/></figure>
+
+<p>Lucene将用于存储term的索引文件叫term index，后缀是.tip；把postings信息分别存储在.doc、.pay、.pox，分别记录postings的DocId信息和term的词频、Payload信息、pox是记录位置信息。term dictionary的文件后缀是.tim，它是term与postings的关系纽带，存储term和其对应的postings文件指针。</p>
+
+<h5>term index</h5>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/Terms%5C%20Index.jpg"/></figure>
+
+<p><strong>图中的.tip部分即为term index，它有一个或多个FST组成，segment上每个字段都有自己的FST（FSTIndex）记录在.tip，所以图中FSTIndex的个数就是segment拥有字段的个数</strong>。</p>
+
+<p>图中将FST画成Trie结构，然后其叶子节点指向tim的block，这实际上是用了一种叫Brust-Trie的数据结构。</p>
+
+<h5>Brust-Trie</h5>
+
+<p>Brust-Trie可以认为是Trie的一种变种，主要是将后缀进行了压缩，降低了Trie的高度，从而获取更好的性能。</p>
+
+<p>Lucene的Brust-Trie拆分成两部分，AccessTree的实现是FST，存在.tip文件；Container的实现是block，存在.tim文件。</p>
+
+<h5>FST</h5>
+
+<p>在Lucene，term dictionary存在.tim文件中。</p>
+
+<p>当segment的文档数量越来越多，term也越来越多，因此需要为term dictionary构建索引，将term dictionary进一步压缩。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/FST.jpg"/></figure>
+
+<p>FST:Finite-State-Transducer，结构上是图。</p>
+
+<p>把一堆字符串的共同前缀进行压缩就会变成Brust-Trie，如果把后缀变成一个一个节点，那么它就是Trie结构了。如果将后缀也进行压缩，就会变成一张图。因此FST是压缩字典树后缀的图结构。</p>
+
+<p><strong>因为FST是通过term dictionary的每个block的前缀构成，所以通过FST只可以直接找到这个block在.tim上的位置。</strong></p>
+
+<h5>term dictionary</h5>
+
+<p><strong>Term Dictionary是Segment的字典，索引表</strong>。</p>
+
+<p>它能够提供查询的term的统计信息，还有postings的元数据。</p>
+
+<hr />
+
+<h3>联合索引查询</h3>
+
+<p>Es查询多个条件的过程就是先从term index找到term1在term dictionary的大概位置，然后从term dictionary中找到term1的posting list；然后根据相同的流程找到term2的posting list；最后把两个posting list做一个“与”合并。</p>
+
+<h5>利用skip list合并</h5>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/skip%5C%20list%E5%8E%9F%E5%A7%8B%E6%95%B0%E6%8D%AE.jpg"/></figure>
+
+<p>以上3个posting list计算交集：首先选择最短的posting list，然后从小到大遍历，遍历的过程可以跳过一些元素。</p>
+
+<p>整个过程：</p>
+
+<p>Next -&gt; 2</p>
+
+<p>Advance(2) -&gt; 13</p>
+
+<p>Advance(13) -&gt; 13</p>
+
+<p>Already on 13</p>
+
+<p>Advance(13) -&gt; 13 MATCH</p>
+
+<p>Next -&gt; 17</p>
+
+<p>Advance(17) -&gt; 22</p>
+
+<p>Advance(22) -&gt; 98</p>
+
+<p>Advance(98) -&gt; 98</p>
+
+<p>Advance(98) -&gt; 98 MATCH</p>
+
+<p>最后得出交集[13,98]，所需时间比完整遍历三个posting list要快得多。</p>
+
+<p>为了做到Advance跳跃移动，需要<strong>skip list</strong>：</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/skip%5C%20list.jpg"/></figure>
+
+<p>对于一个很长的posting list，分为几个block，以每个block第一个元素构建skip list的第二层，这样就可以很快地跨block移动指向位置。</p>
+
+<p>Lucene会使用Frame Of Reference编码对block进一步压缩：</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/Frame%5C%20Of%5C%20Reference%E7%BC%96%E7%A0%81.jpg"/></figure>
+
+<h5>利用bitset合并</h5>
+
+<p>对于posting list：[1,3,4,7,10]，对应的bitset：[1,0,1,1,0,0,1,0,0,1]。</p>
+
+<p>每个文档按照文档id排序对应其中一个bit。bitset本身就有压缩的特点，用一个byte就可以代表8个文档，100万个文档也只需要12.5万个byte。</p>
+
+<p>Lucene为了能实现：</p>
+
+<ul>
+	<li>可以很压缩地保存上亿个bit代表对应的文档是否匹配filter</li>
+	<li>这个压缩的bitset仍然可以很快地进行and和or的逻辑操作</li>
+</ul>
+
+<p>使用了叫做Roaring Bitmap的数据结构。</p>
+
+<figure><img src="/Users/xerxes/note/elasticsearch/src/Roaring%5C%20Bitmap.jpg"/></figure>
+
+</body>
+</html>
+

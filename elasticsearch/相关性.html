@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>相关性</title>
+	</head>
+<body>
+<h1>相关性</h1>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({tex2jax: {inlineMath:[['$','$']]}});
+</script>
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<hr />
+
+<h2>es的打分机制</h2>
+
+<p>确定文档和查询的相关程度的过程称为打分。</p>
+
+<p>Lucene（以及es）的打分机制是一个公式，将考量的文档作为输入，使用不同的因素来确定该文档的得分。</p>
+
+<p>在开始计算得分的时候，es使用了被搜索词条的频率以及它有多常见来影响得分。也就是一个词条出现在某个文档的次数越多，它就越相关。但是如果这个词条出现在不同的文档的次数越多，它就越不相关。这称为TF-IDF，TF是词频，即term frequency；IDF是逆文档频率，即inverse document frequency。</p>
+
+<h3>词频</h3>
+
+<p>考虑给一篇文档打分的首要方式，是查看一个词条在文档中出现的次数。</p>
+
+<h3>逆文档频率</h3>
+
+<p>文档频率是一个词条出现在多少个不同的文档中，不关心词条在同一篇文档中出现的次数。</p>
+
+<p>逆文档频率用<code>得分 * 1/DF</code>计算，也就是词条拥有更高的文档频率，其权重就越低。</p>
+
+<p>逆文档频率是一个重要的因素，用于平衡词条的词频。如用户搜索词条“the score”时，单词“the”几乎出现在每个文本中，如果它不被均衡，单词“the”的频率会完全淹没单词“score”的频率。逆文档频率IDF均衡了“the”这种常见词的相关性影响。</p>
+
+<h3>Lucene 评分公式</h3>
+
+<p>TF-IDF是Lucene的默认评分公式，其公式为：</p>
+
+$$ score_{query,document} = 
+	\sum_t^q
+ 	\sqrt{ TF_{t,d} } 
+ 	* IDF^2_{t,d} 
+ 	* norm(d,field) 
+ 	* boost(t) 
+$$
+<p>给定查询q和文档d，其得分是查询中每个词条t的得分总和。而每个词条的得分是该词在文档d中的词频的平方根，乘以该词逆文档频率的平方和，乘以该文档字段的归一化因子，乘以该词的提升权重。</p>
+
+<h3>其他打分方法</h3>
+
+<p>TF-IDF不是唯一的模型，还有其他模型包括：</p>
+
+<ul>
+	<li>Okapi BM25；</li>
+	<li>随机性分歧（Divergence from randomness），即DFR相似度；</li>
+	<li>基于信息的（Information based），即IB相似度；</li>
+	<li>LM Dirichlet相似度；</li>
+	<li>LM Jelinek Mercer相似度</li>
+</ul>
+
+<hr />
+
+<h2>boosting</h2>
+
+<p>Boosting 是一个可以用来修改文档的相关性的程序。boosting 有两种类型，允许分别在索引文档和查询文档的时候，提升一篇文档的得分。</p>
+
+<p>在索引期间修改的文档boosting 是存储在索引中的，修改boosting 值唯一的方法是重新索引这篇文档。</p>
+
+</body>
+</html>
+

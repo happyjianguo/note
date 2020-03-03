@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>celery</title>
+	</head>
+<body>
+<h1>celery</h1>
+
+<blockquote>
+<p>Celery是一个通过消息机制进行通信，基于分布消息传递的分布式异步消息任务队列。</p>
+</blockquote>
+
+<hr />
+
+<h3>任务队列</h3>
+
+<p>任务队列一般用于线程或计算机之间分配工作的一种机制。</p>
+
+<p>任务队列的输入是一个称为任务的工作单元，有专门的工作进行不断的监视任务队列，执行新的任务工作。</p>
+
+<p>celery可以有多个Worker和Broker，用来提高celery的高可用性以及横向扩展能力。</p>
+
+<hr />
+
+<h3>架构和工作流程</h3>
+
+<h5>架构组成</h5>
+
+<figure><img src="/Users/xerxes/note/messageQueue/src/celery%E6%A8%A1%E5%9D%97%E6%9E%B6%E6%9E%84.jpg"/></figure>
+
+<p><strong>task producer</strong></p>
+
+<p>Producer负责产生任务，交给任务队列去处理。</p>
+
+<p>在celery中，只要是调用了celery提供的API，产生任务并交给任务队列处理的，都可以称为producer。</p>
+
+<p><strong>celery beat</strong></p>
+
+<p>Beat是一个任务调度器，它以独立进程的形式存在。</p>
+
+<p>Beat进程读取配置文件的内容，周期性地将执行任务的请求发送给任务队列。</p>
+
+<p>Beat是celery系统自带的producer，系统管理员可以选择开启或关闭beat。</p>
+
+<p>Celery中只能有一个beat。</p>
+
+<p><strong>broker</strong></p>
+
+<p>消息中间人，就是任务调度队列，通常以独立服务形式出现。</p>
+
+<p>它是一个生产者消费者模式，broker负责接受任务生产者发送过来的任务处理消息，存进队列之后再进行调度，worker从队列中取出任务并执行。</p>
+
+<p><strong>worker</strong></p>
+
+<p>执行任务的程序，可以有多个并发。</p>
+
+<p>它实时监控消息队列，获取队列中调度的任务，并执行。</p>
+
+<p><strong>backend</strong></p>
+
+<p>任务的执行和主程序分离，主程序想获取任务执行的结果，就必须通过中间件存储。</p>
+
+<h5>工作流程</h5>
+
+<p>启动一个任务，客户端向消息队列发送一条消息，Broker将消息传递给Worker，由Worker执行任务。</p>
+
+<figure><img src="/Users/xerxes/note/messageQueue/src/celery%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B.jpg"/></figure>
+
+<hr />
+
+<h3>适用场景</h3>
+
+<h5>异步</h5>
+
+<p>有的任务执行时间较长，可以将任务放入celery任务队列中，并从celery获取一个任务ID。后续通过询问celery来得知任务执行状态和进度。</p>
+
+<h5>定时</h5>
+
+<p>需要定时重复执行某任务，celery任务队列支持定时触发，可以按照时间间隔或者crontab表达式来触发任务。</p>
+
+<hr />
+
+<h3>特性</h3>
+
+<h5>简单</h5>
+
+<h5>高可用</h5>
+
+<p>如果出现丢失连接或连接失败，Worker和客户端会自动重试，并且Broker通过主/主、主/从的方式进行提高可用性</p>
+
+<h5>快速</h5>
+
+<p>单个celery每分钟可以处理数以百万的任务，而且延迟仅为亚毫秒</p>
+
+<h5>灵活</h5>
+
+<p>Celery的每个部分几乎都可以自定义扩展和单独使用，例如自定义连接池、序列化方式、压缩方式、日志记录方式、任务调度、生产者、消费者、Broker等</p>
+
+<hr />
+
+<h3>功能</h3>
+
+<h5>监控</h5>
+
+<p>Worker会连续发出监控事件，并由内置和外部工具来实时告诉你集群在做什么。</p>
+
+<h5>调度</h5>
+
+<p>可以用datetime或seconds指定一个事件来执行任务，或者通过interval来执行需要重复执行的任务。</p>
+
+<h5>工作流</h5>
+
+<p>可以使用一组称为“canvas”的强大原语来构建简单和复杂的工作流。</p>
+
+<h5>资源泄漏保护</h5>
+
+<p><code>--max-tasks-per-child</code>选项用于有资源泄漏危险（内存、文件描述符）并且无法控制的任务。</p>
+
+<h5>时间限制</h5>
+
+<p>可以控制每秒/分钟/小时运行多少任务，或者一个任务允许运行多久。</p>
+
+<h5>用户组件</h5>
+
+<p>每个worker组件都可以个性化，用户可以自定义附加组件。worker是用bootstraps构建的，bootstraps是能够对worker内部进行精细控制的一个依赖关系图。</p>
+
+</body>
+</html>
+

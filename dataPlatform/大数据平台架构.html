@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>大数据平台架构</title>
+	</head>
+<body>
+<h1>大数据平台架构</h1>
+
+<hr />
+
+<h2>关于大数据系统</h2>
+
+<p>数据系统的本质是<strong>查询+数据</strong>，用公式可表达为<code>query = function(all data)</code></p>
+
+<p>大数据系统的关键特性：</p>
+
+<ul>
+	<li>容错性和健壮性：对于分布式系统来说，保证人为操作不出错，程序也不出错是不可能的，因此系统必须对这样的错误有足够的适应能力</li>
+	<li>低延迟：很多应用对于读和写操作的延时要求非常高，要求对更新和查询的响应是低延时的</li>
+	<li>横向扩容：当数据量、负载增大时，系统可以采用scale out（增加机器数量），而不是scale up（增加机器性能）来维持性能</li>
+	<li>可扩展：当系统需要增加一些新功能或者新特性时，所花费的代价较小</li>
+	<li>方便查询：具备方便、快速的查询数据的能力</li>
+	<li>易于维护：系统要想做到易于维护，其关键是控制其复杂性</li>
+</ul>
+
+<hr />
+
+<h2>Lambda架构</h2>
+
+<p>Lambda架构由Storm作者根据自己在Twitter的分布式数据处理系统经验，提出的一个实时大数据处理框架，具有高容错、低延时和可扩展等特性。</p>
+
+<h3>Lambda架构核心的思想：</h3>
+
+<ol>
+	<li>数据从上游MQ消息中间件过来后分为两路，一路离线批处理，一路实时处理并有各自的view以供查询</li>
+	<li>Query时，对数据做Function，结合Batch View和Realtime View，得到最终结果</li>
+</ol>
+
+<h3>架构</h3>
+
+<p>Lambda架构将大数据系统架构为多个层次：</p>
+
+<ul>
+	<li>批处理层（Batch Layer）</li>
+	<li>实时处理层（Speed Layer）</li>
+	<li>服务层（Serving Layer）</li>
+</ul>
+
+<figure><img src="/Users/xerxes/note/dataPlatform/src/Lambda%E6%9E%B6%E6%9E%84.jpg"/></figure>
+
+<h4>Batch Layer</h4>
+
+<p>这层承担两个职责：</p>
+
+<ul>
+	<li>存储Master Dataset，这是一个不变的持续增长的数据集</li>
+	<li>针对这个Master Dataset进行预运算</li>
+</ul>
+
+<p>理想状态下，任何数据访问都可以从表达式<code>Query = function(all data)</code>开始，但是当数据达到相当大的一个级别，且还需要支持实时查询时，就需要耗费非常大的资源。</p>
+
+<p>解决方法是<strong>Batch Layer</strong>，需要执行查询时，就从Batch Layer中读取结果。这样系统就变成了：</p>
+
+<pre><code>batch view = function(all data)
+query = function(batch view)
+</code></pre>
+
+<h4>Serving Layer</h4>
+
+<p>这层承担两个职责：</p>
+
+<ul>
+	<li>对batch view的随机访问</li>
+	<li>更新batch biew</li>
+</ul>
+
+<p>Batch Layer通过对Master Dataset执行查询获得了batch view，而Serving Layer就要负责对batch view进行操作，从而为最终的实时查询提供支持。</p>
+
+<p>Serving Layer应该是一个专用的分布式数据库，以支持对batch view的加载、随机读取以及更新。</p>
+
+<h4>Speed Layer</h4>
+
+<p>这层的作用包括：</p>
+
+<ul>
+	<li>对更新的Serving Layer带来的高延迟的一种补充</li>
+	<li>快速、增量的算法</li>
+	<li>最终Batch Layer会覆盖Speed Layer</li>
+</ul>
+
+<p>Batch Layer完成对batch view的预运算，Serving Layer对其进行更新。</p>
+
+<p>这意味着在运行预运算时进入的数据不会马上呈现到batch view中，无法满足完全实时的数据系统，因此需要Speed Layer。</p>
+
+<p>Speed Layer于Batch Layer类似，区别是前者只处理最近的数据，后者则要处理所有的数据。</p>
+
+<p>Speed Layer为了满足最小的延迟，它是一种增量的计算，并不会在同一时间读取所有的新数据，而是在接收到新数据时，更新realtime view，而不会像Batch Layer那样重新运算整个batch view。</p>
+
+<p>至此，Lambda架构的表达式：</p>
+
+<pre><code>batch view = function(all data)
+realtime view = function(realtime view, new data)
+query = function(batch view, realtime view)</code></pre>
+
+</body>
+</html>
+

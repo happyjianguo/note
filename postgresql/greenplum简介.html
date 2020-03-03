@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>greenplum简介</title>
+	</head>
+<body>
+<h3>greenplum简介</h3>
+
+<blockquote>
+<p>借助于分布式的计算思想，Greenplum实现了基于数据库的分布式数据存储和并行计算。</p>
+</blockquote>
+
+<p>gp的数据库引擎是基于pg的，但是pg是单实例数据库，无法在多个x86服务器上运行多个实例且实现并行计算。因此出现了interconnect这个核心组件，实现了对同一个集群中多个pg实例的高效协同和并行计算。interconnect承载了并行查询计划生产、dispatch分发、协调节点上QE执行器的并行工作、负责数据分布、pipeline计算、镜像复制、健康探测等诸多任务。</p>
+
+<p>Gp将pg作为实例（一个分布式子库）架构在interconnect下，在interconnect的指挥协调下，数十个甚至数千个sub pg数据库实例同时开展并行计算，并且这些pg之间采用share-nothing无共享架构，从而将并行计算能力发挥到极致。</p>
+
+<p>MPP采用两阶段提交和全局事务管理机制来保证集群上分布式事务的一致性，gp像pg一样满足关系型数据库的包括ACID在内的所有特性。</p>
+
+<hr />
+
+<h3>底层引擎</h3>
+
+<p>Gp采用pg作为底层引擎，良好的兼容了pg的功能，pg中的功能模块和接口基本上99%都可以在gp上使用，因此gp与第三方工具、BI报表集成的时候非常容易。</p>
+
+<p>Gp绝不仅仅只是简单的等同于“pg + interconnect并行调度 + 分布式事务两阶段提交”，gp还研发了非常多的高级数据分析管理功能和企业级管理模块，这些功能都是pg没有的。</p>
+
+<h5>为何选pg做轮子</h5>
+
+<ol>
+	<li>从OLAP分析型方面考虑：
+
+		<ul>
+			<li>相比mysql，pg有非常强大sql支持能力和非常丰富的统计函数和统计语法支持，还可以用多种语言来写存储过程</li>
+			<li>mysql查询优化器对于子查询、复制查询如多表关联、外关联的支持等级较弱，缺少多个大表关联分析能力</li>
+		</ul></li>
+	<li>扩展性
+
+		<p>pg天生为扩展而生，可以使用多种语言扩展功能，开发新的功能模块、新的数据类型、新的索引类型等等非常方便</p></li>
+	<li>在诸如ACID事务处理、数据强一致性保证、数据类型支持、独特的MVCC带来的高效数据更新能力等许多方便比mysql更好</li>
+	<li>pg许可是仿照BSD许可模式的，没有被大公司控制，社区纯洁</li>
+</ol>
+
+<hr />
+
+<h3>架构</h3>
+
+<figure><img src="/Users/xerxes/note/greenplum/src/gp%E6%9E%B6%E6%9E%84.png"/></figure>
+
+<p>Gp的最小并行单元不是节点层级，而是实例层级。每个实例都有自己的pg目录结构，都有各自的一套pg数据库守护进程。因此即使一个运行在单节点上的gpDB也是一个小型的并行计算架构。</p>
+
+<p>一般一个节点配置6-8个实例，相当于一个节点有6-8个pg数据库同时并行工作，充分利用每个节点的所有CPU和IO能力。</p>
+
+<h5>一切皆并行</h5>
+
+<p>Gp建立在share-nothing无共享架构上，让每一颗CPU和每一块磁盘IO都运转起来。相比一些其他传统数仓的share-disk架构，后者最大瓶颈就是在IO吞吐上，在大规模数据处理时，IO无法及时feed数据给到CPU，CPU资源处于wait空转状态，无法充分利用资源，导致sql效率低下。</p>
+
+</body>
+</html>
+
