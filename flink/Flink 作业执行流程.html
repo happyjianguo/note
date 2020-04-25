@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Flink 作业执行流程</title>
+	</head>
+<body>
+<h1>Flink 作业执行流程</h1>
+
+<p>Flink 中的执行图可以分成四层：StreamGraph、JobGraph、ExecutionGraph、物理执行图。</p>
+
+<figure><img src="/Users/xerxes/note/flink/src/%E9%80%BB%E8%BE%91%E6%89%A7%E8%A1%8C%E5%9B%BE.jpg"/></figure>
+
+<hr />
+
+<h2>StreamGraph</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/StreamGraph.jpg"/></figure>
+
+<p>根据用户编写的代码生成的最初的图，用来表示程序的拓扑结构。</p>
+
+<p>StreamGraph 包含两部分内容：</p>
+
+<ul>
+	<li>StreamNode：用来描述operator 的逻辑节点，其关键成员变量有slotSharingGroup、jobVertexClass、inEdges、outEdges 以及transformationUID；</li>
+	<li>StreamEdge：表示连接两个StreamNode 的边，其关键变量有sourceVertex、targetVertex</li>
+</ul>
+
+<p>Program 转换成StreamGraph 具体分为三步：</p>
+
+<ol>
+	<li>从<code>StreamExecutionEnvironment.execute</code>开始执行程序，将transform 添加到StreamExecutionEnvironment 的transformations；</li>
+	<li>调用<code>StreamGraphGenerator.generateInternal</code>方法，遍历transformations 构建StreamNode 及StreamEdge；</li>
+	<li>通过StreamEdge 连接StreamNode</li>
+</ol>
+
+<p>有些transform 操作并不会生成StreamNode（如PartitionTransformation），而是生成虚拟节点。</p>
+
+<hr />
+
+<h2>JobGraph</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/JobGraph.jpg"/></figure>
+
+<p>通过JobEdge 连接上下游JobVertex，形成JobVertex 层面的DAG，提交给JobManager。</p>
+
+<p>JobGraph 包含三部分内容：</p>
+
+<ul>
+	<li>JobVertex：经过优化后符合条件的多个StreamNode 可能会chain 在一起生成一个JobVertex，即一个JobVertex 包含一个或多个operator，JobVertex 的输入是JobEdge，输出是IntermediateDataSet；</li>
+	<li>JobEdge：代表了JobGraph 中的一条数据传输通道，source 是IntermediateDataSet，target 是JobVertex。即数据通过JobEdge由IntermediateDataSet传递给目标JobVertex；</li>
+	<li>IntermediateDataSet：表示JobVertex 的输出，即经过operator 处理产生的数据集。producer 是JobVertex，consumer 是JobEdge</li>
+</ul>
+
+<p>StreamGraph 到JobGraph 的转化步骤：</p>
+
+<ol>
+	<li>设置调度模式，Eager 模式下所有节点立即启动；</li>
+	<li>广度优先遍历StreamGraph，为每个StreamNode 生成byte 数组类型的hash 值；</li>
+	<li>从Source 节点开始递归寻找能够嵌到一起的operator，不能嵌到一起的单独生成JobVertex，其他节点以序列化的形式写入到StreamConfig，然后merge 到<code>CHAINED_TASK_CONFIG</code>，再通过JobEdge 链接上下游JobVertex；</li>
+	<li>将每个JobVertex 的入边（StreamEdge）序列化到该StreamConfig；</li>
+	<li>根据group name 为每个JobVertex 指定SlotSharingGroup；</li>
+	<li>配置Checkpoint；</li>
+	<li>将缓存文件存文件的配置添加到configuration 中；</li>
+	<li>设置ExecutionConfig</li>
+</ol>
+
+<h3>operator 链接条件</h3>
+
+<ul>
+	<li>上下游并行度一致；</li>
+	<li>下游节点只有1个输入；</li>
+	<li>上下游节点operator 不为null；</li>
+	<li>上下游节点都在同一个slot group 中；</li>
+	<li>下游节点的chain 策略为ALWAYS（可以与上下游链接，map、flatmap、filter等默认是ALWAYS）；</li>
+	<li>上游节点的chain 策略为ALWAYS/HEAD（只能与下游链接，不能与上游链接，source 默认是HEAD）；</li>
+	<li>edge 的分区函数是ForwardPartitioner 的实例；</li>
+	<li>用户未禁止chain</li>
+</ul>
+
+<h3>为什么要为每个operator（StreamNode）生成hash 值</h3>
+
+<p>Flink 任务失败的时候，各个operator 能够从checkpoint 中恢复到失败之前的状态，恢复的时候是依据JobVertexID（hash 值）进行状态恢复的。</p>
+
+<p>相同的任务在恢复时要求operator 的hash 值不变，才能获取对应的状态。</p>
+
+<h3>operator（StreamNode）如何生成hash 值</h3>
+
+<p>如果用户对节点指定了一个hash 值，则基于用户指定的值生成一个长度为16的字节数组。</p>
+
+<p>如果用户没有指定，则根据当前节点所处的位置生成一个hash 值：</p>
+
+<ol>
+	<li>当前StreamNode 之前已经处理过的节点的个数，作为当前StreamNode 的id，添加到hasher 中；</li>
+	<li>遍历当前StreamNode 输出的每个StreamEdge，并判断当前StreamNode 与这个StreamEdge 的目标StreamNode 是否可以进行链接，如果可以则将目标StreamNode 的id 也放入hasher 中，且这个目标StreamNode 的id 与当前StreamNode 的id 取相同的值；</li>
+	<li>将上述步骤产生的字节数据，与当前StreamNode 的所有输入StreamNode 对应的字节数据，进行相应的位操作，最终得到的字节数据，就是当前StreamNode 对应的长度为16的字节数组</li>
+</ol>
+
+<hr />
+
+<h2>ExecutionGraph</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/ExecutionGraph.jpg"/></figure>
+
+<p>JobManager 根据JobGraph 生成ExecutionGraph，它是JobGraph 的并行化版本，是调度层最核心的数据结构。</p>
+
+<p>ExecutionGraph 包含6部分内容：</p>
+
+<ul>
+	<li>ExecutionJobVertex：和JobGraph 中的JobVertex 一一对应。每一个ExecutionJobVertex 都有和并发度一样多的ExecutionVertex；</li>
+	<li>ExecutionVertex：表示ExecutionJobVertex 的其中一个并发子任务，输入是ExecutionEdge，输出是IntermediateResultPartition；</li>
+	<li>IntermediateResult：和JobGraph 中的IntermediateDataSet 一一对应。一个IntermediateResult 包含多个IntermediateResultPartition，其个数等于该operator的并发度；</li>
+	<li>IntermediateResultPartition：表示ExecutionVertex 的一个输出分区，producer 是ExecutionVertex，consumer 是若干个ExecutionEdge；</li>
+	<li>ExecutionEdge：表示ExecutionVertex 的输入，source 是IntermediateResultPartition，target 是ExecutionVertex。source 和target 都只能是一个；</li>
+	<li>Execution：是执行一个ExecutionVertex 的一次尝试。当发生故障或者数据需要重算的情况下ExecutionVertex 可能会有多个 ExecutionAttemptID。一个Execution 通过ExecutionAttemptID 来唯一标识。JM和TM之间关于task 的部署和task status 的更新都是通过ExecutionAttemptID 来确定消息接受者</li>
+</ul>
+
+<p>JobGraph 到ExecutionGraph 以及物理执行计划的流程：</p>
+
+<ol>
+	<li>将JobGraph 里面的JobVertex 从Source 节点开始排序；</li>
+	<li>在<code>executionGraph.attachJobGraph(sortedTopology)</code>方法里面，根据JobVertex 生成ExecutionJobVertex；</li>
+	<li>在ExecutionJobVertex 的构造方法里面，根据JobVertex 的IntermediateDateSet 构建IntermediateResult；</li>
+	<li>根据JobVertex 并发构建ExecutionVertex，ExecutionVertex 构建的时候，构建IntermediateResultPartition（每一个Execution 构建IntermediateResult 个IntermediateResultPartition）；</li>
+	<li>将构建的ExecutionJobVertex 与前置的IntermediateResult 连接起来；</li>
+	<li>构建ExecutionEdge，连接到前面的IntermediateResultPartition</li>
+</ol>
+
+<hr />
+
+<h2>物理执行图</h2>
+
+<figure><img src="/Users/xerxes/note/flink/src/%E7%89%A9%E7%90%86%E6%89%A7%E8%A1%8C%E5%9B%BE.jpg"/></figure>
+
+<p>JobManager 根据ExecutionGraph 对job 进行调度后，在各个TaskManager 上部署task 后形成的图，并不是一个具体的数据结构；</p>
+
+<ul>
+	<li>task：Execution 被调度后在分配的TaskManager 中启动对应的Task。Task 包裹了具有用户执行逻辑的operator；</li>
+	<li>ResultPartition：代表由一个Task 的生成的数据，和ExecutionGraph 中的IntermediateResultPartition 一一对应；</li>
+	<li>ResultSubpartition：是ResultPartition 的一个子分区。每个ResultPartition 包含多个ResultSubpartition，其数目要由下游消费Task 数和DistributionPattern 来决定；</li>
+	<li>InputGate：代表Task 的输入封装，和JobGraph 中JobEdge 一一对应。每个InputGate 消费了一个或多个的ResultPartition；</li>
+	<li>InputChannel：每个InputGate 会包含一个以上的InputChannel，和ExecutionGraph 中的ExecutionEdge 一一对应，也和ResultSubpartition 一对一地相连，即一个InputChannel 接收一个ResultSubpartition 的输出</li>
+</ul>
+
+</body>
+</html>
+

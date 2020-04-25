@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>JVM</title>
+	</head>
+<body>
+<h1>JVM</h1>
+
+<p>Java 源代码是通过Java 虚拟机（Java Virtual Machine，JVM）被机器识别并执行的。</p>
+
+<p>Oracle 的HotSpot JVM 实现是目前OpenJDK 使用的主流JVM，它采用<strong>解释与编译混合执行的模式，其JIT 技术采用分层编译，极大地提升了Java 的执行速度</strong>。</p>
+
+<hr />
+
+<h2>字节码</h2>
+
+<p>字节码的产生是为了使代码和硬件平台之间加一个中间层。</p>
+
+<p>Java 所有的指令有200个左右，一个字节（8位）可以存储256种不同的指令信息，一个这样的字节称为字节码（Bytecode）。</p>
+
+<h3>字节码指令</h3>
+
+<p>如下图所示是一个类的二进制字节码，十六进制表示的二进制流通常是一个操作指令。其实的4个字节<code>cafe babe</code>是Gosling 定义的一个魔法数，意思是Caffee Baby，其十进制值为3405691582，作用是标志该文件是一个Java 类文件。红色框代表当前版本号。</p>
+
+<p>纯数字的字节码阅读困难，汇编语言为了改进机器代码，使用助记符来替代对应的数字指令。JVM 同样在字节码上设计了一套操作码助记符，使用特殊单词来标记这些数字。</p>
+
+<p>字节码主要指令如下：</p>
+
+<ul>
+	<li>加载或存储指令：在某个栈帧中，通过指令操作数据在虚拟机栈的局部变量与操作栈之间传输，常见指令如：
+
+		<ul>
+			<li>将局部变量加载到操作栈中：如ILOAD（将int 类型的局部变量压入栈）和ALOAD（将对象引用的局部变量压入栈）等；</li>
+			<li>从操作栈顶存储到局部变量表：如ISTORE、ASTORE 等；</li>
+			<li>将常量加载到操作栈顶：如：
+
+				<ul>
+					<li>ICONST：记载-1～5的数；</li>
+					<li>BIPUSH：Byte Immediate PUSH，加载-128～127之间的数；</li>
+					<li>SIPUSH：Short Immediate PUSH，加载-32768～32767之间的数</li>
+					<li>LDC：Load Constant：在-2147483648～2147483647或者字符串时，JVM 采用LDC 指令压入栈</li>
+				</ul></li>
+		</ul></li>
+	<li>运算指令：对两个操作栈帧上的值进行运算，并把结果写入到操作栈顶，如IADD、IMUL 等；</li>
+	<li>类型转换指令：显式的转换两种不同的数值类型；</li>
+	<li>对象创建与访问指令：根据类进行对象的创建、初始化、方法调用相关指令，常见指令如：
+
+		<ul>
+			<li>创建对象指令：如NEW、NEWARRAY 等；</li>
+			<li>访问属性指令：如GETFIELD、PUTFIELD、GETSTATIC 等；</li>
+			<li>检查实例类型指令：如INSTANCEOF、CHECKCAST 等；</li>
+		</ul></li>
+	<li>操作栈管理指令：JVM 提供了直接控制操作栈的指令，如：
+
+		<ul>
+			<li>出栈操作：如POP；</li>
+			<li>复制栈顶元素并压入栈：如DUP；</li>
+		</ul></li>
+	<li>方法调用与返回指令：常见指令如：
+
+		<ul>
+			<li>INVOKEVIRTUAL：调用对象的实例方法；</li>
+			<li>INVOKESPECIAL：调用实例初始化方法、私有方法、父类方法等；</li>
+			<li>INVOKESTATIC：调用类静态方法；</li>
+			<li>RETURN：返回VOID 类型</li>
+		</ul></li>
+	<li>同步指令：JVM 使用方法结构中的<code>ACC_SYNCHRONIZED</code>标志同步方法，指令集中有MONITORENTER、MONITOREXIT 支持synchronized 语义</li>
+</ul>
+
+<p>除字节码指令外，还包含一些额外信息，例如LINENUMBER 存储了字节码和源代码行号的对应关系，方便调试的时候正确地定位到代码的所在行；LOCALVARIABLE 存储当前方法中使用到的局部变量表。</p>
+
+<h3>源码执行过程</h3>
+
+<p>Java 源代码不能交给机器直接执行，需要编译成字节码甚至是机器码。</p>
+
+<p>如下图是静态编译器把源码转化成字节码的流程：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E6%BA%90%E7%A0%81%E8%BD%AC%E5%AD%97%E8%8A%82%E7%A0%81.png"/></figure>
+
+<p>字节码通过类加载过程加载到JVM 环境后有3种模式：<strong>解释执行、JIT 编译执行、JIT 编译与解释混合执行（主流JVM 默认执行模式）</strong>。</p>
+
+<p>混合执行的优势在于解释器在启动时先解释执行，省去编译时间。随着时间推进，JVM 通过热点代码统计分析，识别高频的方法调用、循环体、公共模块等，基于强大的JIT 动态编译技术，将热点代码转换成机器码，直接交给CPU 执行。</p>
+
+<p><strong>JIT 的作用是将Java 字节码动态地编译成可以直接发送给处理器指令执行的机器码</strong>。简要流程如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91.png"/></figure>
+
+<hr />
+
+<h2>类加载过程</h2>
+
+<p><strong>在冯·诺伊曼定义的计算模型中，任何程序都需要加载到内存中才能与CPU 进行交流</strong>。</p>
+
+<p><strong>字节码<code>.clas</code>文件同样需要加载到内存中，才可以实例化类成Class 对象并进行相关初始化</strong>。</p>
+
+<p>Java 的类加载器是一个运行时核心基础设施模块，如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E7%B1%BB%E5%8A%A0%E8%BD%BD%E8%BF%87%E7%A8%8B.png"/></figure>
+
+<p>主要是在启动之初进行类的Load、Link 和Init：</p>
+
+<ul>
+	<li>Load 阶段读取类文件产生二进制流，并转化为特定的数据结构，初步校验cafe babe 魔法数、常量池、文件长度、是否有父类等，然后创建对应类的<code>java.lang.class</code>实例；</li>
+	<li>Link 阶段包括三个步骤：
+
+		<ul>
+			<li>验证：更详细的校验，比如final 是否合规、类型是否正确、静态变量是否合理等；</li>
+			<li>准备：为静态变量分配内存，并设定默认值；</li>
+			<li>解析：解析类和方法确保类与类之间的相互引用正确，完成内存结构布局；</li>
+		</ul></li>
+	<li>Init 阶段执行类构造器<code>&lt;clinit&gt;</code>方法，如果赋值运算是通过其他类的静态方法来完成的，那么会马上解析另一个类，在虚拟机栈中执行完毕后通过返回值进行赋值</li>
+</ul>
+
+<h3>类加载器</h3>
+
+<p>类加载过程使用的是<strong>溯源委派加载模型（Parents Delegation Model）</strong>。在此过程中，JVM 会初始化继承树上还没有被初始化过的所有父类，并且执行这个链路上所有未执行过的静态代码块、静态变量赋值语句等。某些类在使用时，也可以按需由类加载器进行加载。</p>
+
+<p>类加载器最高的一层是<strong>Bootstrap</strong>，它是在JVM 启动时创建的，通常由于操作系统相关的本地代码实现，是最根基的类加载器，负责装载最核心的Java 类，比如Object、System、String 等。</p>
+
+<p>第二层是在JDK9中，称为<strong>Platform ClassLoader，即平台类加载器</strong>，用于记载一些扩展的系统类，比如XML、加密、压缩相关的功能类等，JDK9之前的加载器是Extension ClassLoader。</p>
+
+<p>第三层是<strong>Application ClassLoader的应用类加载器</strong>，主要加载用户定义的CLASSPATH 路径下的类。</p>
+
+<p>第二、三层类加载器为Java 语言实现，用户也可以自定义类加载器。</p>
+
+<p>类加载器具有登记制度，但是并非继承关系，以组合的方式来复用父加载器的功能，这也符合组合优先原则。</p>
+
+<p>详细的溯源委派加载模型如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E6%BA%AF%E6%BA%90%E5%A7%94%E6%B4%BE%E6%A8%A1%E5%9E%8B.png"/></figure>
+
+<p>低层次的当前类加载器，不能覆盖更高层次类加载已经记载的类。</p>
+
+<p>如果低层次的类加载器想加载一个未知类：</p>
+
+<ul>
+	<li>首先向上逐级询问这个类是否已经被加载；</li>
+	<li>被询问的高层次类加载器会自问两个问题：
+
+		<ul>
+			<li>我是否已经加载过此类；</li>
+			<li>如果没有，是否可以加载此类</li>
+		</ul></li>
+	<li>当所有高层次类加载器两个问题的答案都为‘否’时，才可以让当前类加载器加载这个未知类。</li>
+</ul>
+
+<h4>需要自定义类加载器的情况</h4>
+
+<h5>隔离加载类</h5>
+
+<p>在某些框架内进行中间件与应用的模块隔离，把类加载到不同的环境。</p>
+
+<p>比如在容器框架通过自定义类加载器确保应用中依赖的jar 包不会影响到中间件运行时使用的jar 包。</p>
+
+<h5>修改类加载方式</h5>
+
+<p>累的加载模型并非强制，除Bootstrap 外，其他的加载并非一定要引入，或者根据实际情况在某个时间点进行按需动态加载。</p>
+
+<h5>扩展加载源</h5>
+
+<p>比如从数据库、网络，甚至是电视机机顶盒进行加载。</p>
+
+<h5>防止源码泄漏</h5>
+
+<p>Java 代码容易被编译和篡改，可以进行编译加密。</p>
+
+<h3>class、Class</h3>
+
+<p>全小写的class 是关键字，用来定义类，而首字母大写的Class 是所有class 的类。</p>
+
+<h3>new、newInstance</h3>
+
+<p>New 是强类型校验，可以调用任何构造方法，在使用new 操作的时候，这个类可以没有被加载过。</p>
+
+<p>而Class 类下的newInstance 是弱类型，只能调用无参构造方法，如果没有默认构造方法，就抛出InstantiationException 异常；如果此构造方法没有访问权限，则抛出IllegalAccessException 异常。</p>
+
+<p><strong>Java 通过类加载器把类的实现与类的定义进行解耦，所以是实现面向接口编程、依赖倒置的必然选择</strong>。</p>
+
+<hr />
+
+<h2>对象实例化</h2>
+
+<p><strong>Java 是面向对象的静态强类型语言</strong>，声明并创建对象的代码很常见，根据某个类声明一个引用变量指向被创建的对象，并使用此引用变量操作该对象。</p>
+
+<h3>从字节码角度看待对象的创建过程</h3>
+
+<p>以最简单的<code>Object ref = new Object();</code>为例，分析实例化对象过程中，JVM 发生了什么。利用<code>javap -verbose -p</code>命令查看对象创建的字节码：</p>
+
+<pre><code>stack=2, locals=1, args_size=0
+    NEW java/lang/Obejct
+    DUP
+    INVOKESPECIAL java/lang/Object.&lt;init&gt; ()V
+    ASTORE_1
+    LocalVariableTable:
+        Start    Length    Slot    Name    Signature
+           8            1            0           ref        Ljava/lang/Object;
+</code></pre>
+
+<h4>NEW</h4>
+
+<p>如果找不到Class 对象，则进行<strong>类加载</strong>。</p>
+
+<p>加载成功后，则<strong>在堆中分配内存</strong>，从Object 开始到本类路径上的所有属性值都要分配内存。</p>
+
+<p>分配完毕之后，进行<strong>零值初始化</strong>。</p>
+
+<p>这个指令完成后，<strong>将指向实例对象的引用变量压入虚拟机栈顶</strong>。</p>
+
+<h4>DUP</h4>
+
+<p><strong>在栈顶复制该引用变量</strong>，这时的栈顶有两个指向堆内实例对象的引用变量。</p>
+
+<p>如果<code>&lt;init&gt;</code>方法有参数，还需要把参数压入操作栈中。</p>
+
+<p>两个引用变量的目的不同，其中<strong>压至底下的引用用于赋值，或者保存到局部变量表，另一个栈顶的引用变量作为句柄调用相关方法</strong>。</p>
+
+<h4>INVOKESPECIAL</h4>
+
+<p>调用对象实例方法，通过栈顶的引用变量调用<code>&lt;init&gt;</code>方法。</p>
+
+<p><code>&lt;clinit</code>是类初始化时执行的方法，而<code>&lt;init&gt;</code>是对象初始化时执行的方法。</p>
+
+<h3>从执行步骤的角度看待对象的创建过程</h3>
+
+<h4>确认类元信息是否存在</h4>
+
+<p><strong>当JVM 接收到new 指令时，首先在metaspace 内检查需要创建的类元信息是否存在</strong>。</p>
+
+<p>若不存在，在溯源委派加载模型下，<strong>使用当前类加载器以ClassLoader + 包名 + 类名为Key 进行查找对应的.class 文件</strong>。</p>
+
+<p>如果没有找到文件，则抛出ClassNotFoundException 异常；如果找到则进行类加载，并生成对应的Class 对象。</p>
+
+<h4>分配兑现内存</h4>
+
+<p><strong>首先计算对象占用空间大小</strong>，如果实例成员变量是引用变量，仅分配引用变量空间（即4个字节大小）即可，<strong>接着在堆中划分一块内存给新对象</strong>。</p>
+
+<p>在分配内存空间时，需要进行同步操作，比如采用CAS（Compare And Swap）失败重试、区域加锁等方式保证分配操作的原子性。</p>
+
+<h4>设定默认值</h4>
+
+<p><strong>成员变量值都需要设定为默认值，即各种不同形式的零值</strong>。</p>
+
+<h4>设置对象头</h4>
+
+<p><strong>设置新对象的哈希码、GC 信息、锁信息、对象所属的类元信息等</strong>。</p>
+
+<p>这个过程的具体设置方式取决于JVM 实现。</p>
+
+<h4>执行init 方法</h4>
+
+<p><strong>初始化成员变量，执行实例化代码块，调用类的构造方法，并把对内对象的首地址赋值给引用变量</strong>。</p>
+
+<hr />
+
+<h2>垃圾回收</h2>
+
+<p>Java 会对内存进行自动分配与回收管理，使上层业务更加安全、方便地使用内存实现程序逻辑。</p>
+
+<p>垃圾回收的主要目的是清除不再使用的对象，自动释放内存。</p>
+
+<h3>对象是否可被回收</h3>
+
+<p>为了判断对象是否存活，JVM 引入了GC Roots。</p>
+
+<p>如果一个对象与GC Roots 之间没有直接或间接的引用关系，比如某个失去任何引用的对象，或者两个互相循环引用的对象等，则判断这些对象是可以被回收的。</p>
+
+<p>可以作为GC Roots 的对象有：<strong>类静态属性中引用的对象、常量引用的对象、虚拟机栈中引用的对象、本地方法栈中引用的对象等</strong>。</p>
+
+<h3>垃圾回收算法</h3>
+
+<h4>标记-清除</h4>
+
+<p>该算法从每个GC Roots 出发，依次标记有引用关系的对象，最后将没有被标记的对象清除。</p>
+
+<p>缺点：效率低，回收后会产生不连续的内存碎片，遇到较大对象之后会再一次触发gc。</p>
+
+<h4>标记-整理</h4>
+
+<p>前面仍然进行标记过程，但后续不进行直接清除，而是让所有存活的对象向一端移动，形成连续的已使用空间，最后把已使用空间之外的部分全部清理掉。</p>
+
+<h4>复制算法（Mark-Copy）</h4>
+
+<p>为了能够并行地标记和整理，将空间分为两块，每次只激活其中一块，GC 时只需要把存活的对象复制到另一块未激活空间上，将未激活空间标记为已激活，将已激活空间标记为未激活，然后清除对象。</p>
+
+<p>缺点：每次将一半区域作为保留区域代价太大。</p>
+
+<p>当前虚拟机一般使用Mark-Copy算法回收新生代：以8:1:1分为Eden和两个survivor区域，每次使用一个Eden和一个survivor，回收时将所有存货对象复制到另一个survivor区域，如果另一个survivor区域空间不足，可以根据分配担保进入老年带。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/gc%E5%A4%8D%E5%88%B6%E7%AE%97%E6%B3%95.jpg"/></figure>
+
+<h4>分带收集</h4>
+
+<p>一般根据对象存活周期不同分为新生代和老年带，新生代由于存活对象少，可以用Mark-Copy算法，老年带可以采用标记-整理算法。</p>
+
+<h3>垃圾回收器（Garbage Collector）</h3>
+
+<p>垃圾回收器是实现垃圾回收算法并应用在JVM 环境中的内存管理模块。</p>
+
+<h4>Serial</h4>
+
+<p>主要用于YGC，采用串行单线程。</p>
+
+<p>垃圾回收的某个阶段会暂停整个应用程序的执行，即STW（Stop The World）。</p>
+
+<p>FGC 的时间相对较长，频繁FGC 会严重影响应用程序的性能。</p>
+
+<p>主要流程如下图所示：</p>
+
+<figure><img src="serial%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8.png"/></figure>
+
+<h4>CMS（Concurrent Mark Sweep Collector）</h4>
+
+<p>回收停顿的时间较短，目前较常用。</p>
+
+<p>通过初始标记（Initial Mark），并发标记（Concurrent Mark），重新标记（Remark），并发清除（Concurrent Sweep）四个步骤完成回收。</p>
+
+<p>第1、3步的初始标记和重新标记依然会引发STW，而第2、4步的并发标记和并发清除两个阶段可以和应用程序并发执行。</p>
+
+<p>由于CMS 采用的是标记-清除算法，因此会产生大量空间碎片。</p>
+
+<h4>G1（Garbage-First Garbage Collector）</h4>
+
+<p>Hotspot在JDK7中推出新一代G1垃圾回收器，通过<code>-XX:+UseG1GC</code>参数启用，在JDK11中是默认垃圾回收器。</p>
+
+<p>G1 采用的是Mark-Copy 算法，在实现高吞吐量的同时，尽可能的满足垃圾收集暂停时间的要求，能与应用程序线程并发执行，整理空闲空间更快，有整理内存过程，不会产生很多内存碎片，STW 更可控，G1在停顿时间上添加了预测机制，用户可以指定期望停顿时间。</p>
+
+<h5>Region</h5>
+
+<p>传统的GC 收集器将连续的内存空间划分为新生代、老年代，这种划分的特点是各代的逻辑存储地址是连续的，如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E4%BC%A0%E7%BB%9FGC%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png"/></figure>
+
+<p>而G1的各代逻辑存储地址是不连续的，每一代都使用了n 个不连续的大小相同的Region，包括Eden、Survivor、Old、Humongous 四种类型，每个Region 占有一块连续的虚拟内存地址，如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/G1%E5%9B%9E%E6%94%B6%E6%A8%A1%E5%9E%8B.png"/></figure>
+
+<p>其中Humongous 是特殊的Old 类型，专门放置大型对象。</p>
+
+</body>
+</html>
+

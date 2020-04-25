@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Druid Sql 解析器</title>
+	</head>
+<body>
+<h1>Druid Sql 解析器</h1>
+
+<p>在Druid 的Sql 解析器中，有三个重要的组成部分，分别是：</p>
+
+<ul>
+	<li>Parser
+
+		<ul>
+			<li>词法分析</li>
+			<li>语法分析</li>
+		</ul></li>
+	<li>AST（Abstract Syntax Tree，抽象语法树）</li>
+	<li>Visitor</li>
+</ul>
+
+<hr />
+
+<h2>Parser</h2>
+
+<h3>词法解析</h3>
+
+<p><strong>词法分析主要是把输入转化成一个个Token</strong>。其中Token 包含Keyword（也称symbol）和非Keyword。</p>
+
+<p>例如Sql 语句<code>select username from userinfo</code>，在分析之后，会得到四个Token，其中两个Keyword 和两个非Keyword。</p>
+
+<h3>语法分析</h3>
+
+<p><strong>语法分析就是生成语法树的过程</strong>。</p>
+
+<p>例如Sql 语句：</p>
+
+<pre><code>select username, ismale from userinfo where age &gt; 20 ad level &gt; 5 and 1 = 1;
+</code></pre>
+
+<p>会生成如下语法树：</p>
+
+<figure><img src="/Users/xerxes/note/dataWareHouse/src/%E8%AF%AD%E6%B3%95%E6%A0%91%E7%A4%BA%E4%BE%8B.png"/></figure>
+
+<p>这个过程背后的原理都是编译器的范畴，Mysql 使用了Bison 来完成这部分工作。</p>
+
+</body>
+</html>
+

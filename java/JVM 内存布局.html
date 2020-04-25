@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>JVM 内存布局</title>
+	</head>
+<body>
+<h1>JVM 内存布局</h1>
+
+<p>JVM 内存布局规定了Java 在运行过程中内存申请、分配、管理的策略，保证了JVM 的高效稳定运行。</p>
+
+<p>如下图描述了当前比较经典的Java 内存布局。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/JVM%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80.png"/></figure>
+
+<p>如果按照线程是否共享来分类，则如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/JVM%E5%86%85%E5%AD%98%E5%B8%83%E5%B1%80%E6%8C%89%E7%BA%BF%E7%A8%8B%E6%98%AF%E5%90%A6%E5%85%B1%E4%BA%AB%E5%88%86%E7%B1%BB.png"/></figure>
+
+<hr />
+
+<h2>Heap 堆区</h2>
+
+<p>堆是OOM 故障最主要的发生区域。<strong>它是内存区域中最大的一块区域，被所有线程共享，存储着几乎所有的实例对象、数组</strong>。</p>
+
+<p>所有的对象实例以及数组都要在堆上分配，但是随着JIT 编译器的发展与逃逸分析技术逐渐成熟，栈上分配、标量替换优化技术将会导致一些微妙的变化发生，所有的对象都分配在堆上也渐渐变得不是那么绝对了。</p>
+
+<p>Java 堆是垃圾收集器管理的主要区域，因此经常被称为<strong>GC堆</strong>。</p>
+
+<p>从内存分配角度来看，线程共享的Java 堆中可能划分出多个线程私有的<strong>分配缓冲区（Thread Local Allocation Buffer，TLAB）</strong>。</p>
+
+<h3>堆区的调整</h3>
+
+<p>根据Java 虚拟机规范的规定，Java 堆可以处于物理上不连续的内存空间中，只要逻辑上是连续的即可。</p>
+
+<p>通过参数<code>-Xms256M -Xmx 1024M</code>可以设定堆区的初始值和最大值。<code>-X</code>代表着时JVM 运行时参数，<code>ms</code>代表memory start，<code>mx</code>代表memory max。</p>
+
+<p>Note：通常情况下，服务器在运行过程中，堆空间不断的扩容与回缩，会形成不必要的系统压力，因此线上生产环境中JVM 的<code>Xm</code>s和<code>Xmx</code>会设置成同样大小，避免在GC 后调整堆大小时带来的额外压力。</p>
+
+<h3>堆的默认空间分配</h3>
+
+<p>通过命令<code>java -XX:+PrintFlagsFinal -version</code>可以查看当前JDK 版本所以默认的JVM 参数。</p>
+
+<p>命令返回结果中与堆内存分配相关的内容：</p>
+
+<pre><code>[Global flags]
+	...
+    uintx InitialSurvivorRatio                  = 8 // 新生代Eden/Survivor 空间的初始比例
+    uintx NewRatio                                  = 2 // Old 区/Young 区的内存比例
+    ...
+java version &quot;1.8.0_221&quot;
+Java(TM) SE Runtime Environment (build 1.8.0_221-b11)
+Java HotSpot(TM) 64-Bit Server VM (build 25.221-b11, mixed mode)
+</code></pre>
+
+<p>即如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E5%A0%86%E7%9A%84%E9%BB%98%E8%AE%A4%E7%A9%BA%E9%97%B4%E5%88%86%E9%85%8D.png"/></figure>
+
+<hr />
+
+<h2>创建新对象的内存分配流程</h2>
+
+<p>堆分为两大块：新生代和老年代。新生代 = 1个Eden 区 + 2个Survivor 区。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E6%96%B0%E5%AF%B9%E8%B1%A1%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E6%B5%81%E7%A8%8B.png"/></figure>
+
+<p>绝大部分对象在Eden 区生成，当Eden 区装满的时候会触发<strong>Young Garbage Collection，即YGC</strong>。</p>
+
+<p>每个对象都有一个计数器，每次YGC 都会加1。在JVM 中<code>-XX:MaxTenuringThreshold</code>参数配置了一个对象从新生代晋升到老年代的阈值，默认为15，即在Survivor 区交换14次之后，晋升至老年代。</p>
+
+<p>如果Suvivor 区无法放下，或者超大对象的阈值超过上限，则尝试在老年代中进行分配；如果老年代也无法放下，则会触发Full Garbage Collection，即FGC。</p>
+
+<p>如果依然无法放下，则抛出OOM。</p>
+
+<hr />
+
+<h2>Metaspace 元空间</h2>
+
+<p>永久代是有大小限制的，因此如果加载的类太多，很有可能导致永久代内存溢出，因此JVM 的开发者希望这一块内存可以更灵活的被管理。</p>
+
+<p>JDK8 中PermGen 被移出了HotSpot JVM。<strong>方法区、类元信息、字段、静态属性、方法、常量等都移到Metaspace 中；字符串常量池移至堆区。</strong></p>
+
+<p><strong>Metaspace 的本质和永久代类似，都是对JVM 规范中方法区的实现</strong>，不过Metaspace 和永久代最大的区别在于：<strong>Metaspace 并不在虚拟机中，而是使用本地内存</strong>。</p>
+
+<hr />
+
+<h2>Java 虚拟机栈</h2>
+
+<p><strong>对于每一个线程，JVM 都会在线程被创建的时候，创建一个单独的栈。也就是说虚拟机栈的生命周期和线程是一致的，并且是线程私有的</strong>。</p>
+
+<p><strong>除了Native 方法，Java 方法都是通过Java 虚拟机栈来实现调用和执行过程的</strong>（需要程序计数器、堆、元空间内数据的配合）。因此Java 虚拟机栈是虚拟机执行引擎的核心之一。Java 虚拟机栈中出入栈的元素称为<strong>栈帧</strong>。</p>
+
+<p><strong>栈帧（Stack Frame）是用于支持虚拟机进行方法调用和方法执行的数据结构</strong>。</p>
+
+<p>栈帧存储了<strong>方法的局部变量表、操作数栈、动态连接和方法返回地址等信息</strong>。每一个方法从调用到执行完成的过程，都对应着一个栈帧在虚拟机栈中从入栈到出栈的过程。</p>
+
+<p><strong>栈对应线程，栈帧对应方法</strong>。</p>
+
+<p>在活动线程中，只有栈顶的帧是有效的，称为<strong>当前栈帧</strong>。正在执行的方法称为<strong>当前方法</strong>。在执行引擎运行时，所有指令都只能针对当前栈帧进行操作。</p>
+
+<p><code>StackOverflowError</code>表示请求的栈溢出，导致内存耗尽。</p>
+
+<p>虚拟机栈通过pop 和push 方法，对每个方法对应的活动栈帧进行运算处理，方法正常执行结束，跳转到另一个栈帧。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E8%99%9A%E6%8B%9F%E6%9C%BA%E6%A0%88.png"/></figure>
+
+<h3>局部变量表</h3>
+
+<p><strong>局部变量表就是存放方法参数和方法内部定义的局部变量的区域</strong>。</p>
+
+<p><strong>局部变量表需要的内存空间在编译期间完成分配</strong>，当进入一个方法时，这个方法需要在帧中分配多大的局部变量空间是完全确定的，在方法运行期间不会改变局部变量表的大小。</p>
+
+<p><strong>如果局部变量是Java 的8种基本数据类型，则存在局部变量表中。如果是引用类型，如new 出来的String，局部变量表中存引用，实例存在堆中</strong>。</p>
+
+<h3>操作栈</h3>
+
+<p>操作栈（Operand Stack）是一个栈结构，Java 虚拟机的解释执行引擎称为“基于栈的执行引擎”，其中所指的“栈”就是操作数栈。</p>
+
+<p><strong>当JVM 为方法创建栈帧时，在栈帧中为方法创建一个操作栈</strong>，保证方法内指令可以完成工作。</p>
+
+<p>在方法执行过程中，会有各种指令往栈中写入和提取信息。</p>
+
+<p>字节码指令集的定义都是基于栈类型的，以如下代码为例说明操作栈与局部变量表的交互：</p>
+
+<pre><code>public int simpleMethod() {
+    int x = 13;
+    int y = 14;
+    int z = x + y;
+    return z;
+}
+</code></pre>
+
+<p>详细的字节码操作顺序如下：</p>
+
+<pre><code>public simpleMethod();
+descriptor: ()
+flags: ACC_PUBLIC
+Code:
+    stack=2, locals=4, args_Size=1 // 最大栈深度2，局部变量个数4
+        BIPUSH 13 // 常量13压入操作栈
+        ISTORE_1 // 并保存到局部变量表的slot_1中
+
+        BIPUSH 14 // 常量14压入操作栈
+        ISTORE_2 // 并保存到局部变量表的slot_2中
+
+        ILOAD_1 // 把局部变量表的slot_1元素压入操作栈
+        ILOAD_2 // 把局部变量表的slot_2元素压入操作栈
+        IADD // 把上方的两个数都取出来，在CPU 中加一下，并压回操作栈的栈顶
+        ISTORE_3 // 把栈顶的结果存储到局部变量表的slot_3中
+
+        ILOAD_3
+        IRETURN // 返回栈顶元素
+</code></pre>
+
+<h3>动态连接</h3>
+
+<p><strong>每个栈帧中包含一个在常量池中对当前方法的引用，目的是支持方法调用过程的动态连接</strong>。</p>
+
+<h3>方法返回地址</h3>
+
+<p>方法执行时有两种退出情况：</p>
+
+<ul>
+	<li>正常退出</li>
+	<li>异常退出</li>
+</ul>
+
+<p>无论哪种情况，都将返回至方法当前被调用的位置，方法退出的过程相当于弹出当前栈帧，退出可能有三种方式：</p>
+
+<ul>
+	<li>返回值压入上层调用栈帧；</li>
+	<li>异常信息抛给能够处理的栈帧；</li>
+	<li>PC 计数器指向方法调用后的下一条指令</li>
+</ul>
+
+<hr />
+
+<h2>本地方法栈</h2>
+
+<p>本地方法栈（Native Method Stack）与虚拟机栈所发挥的作用类似，它们之间的区别是：<strong>虚拟机栈为虚拟机执行Java 方法服务，而本地方法栈则为虚拟机使用到的Native 方法服务</strong>。</p>
+
+<p>线程开始调用本地方法时，会进入一个不再受JVM 约束的世界。<strong>本地方法可以通过JNI（Java Native Interface）来访问虚拟机运行时的数据区，甚至可以调用寄存器，具有和JVM 相同的能力和权限</strong>。</p>
+
+<p>最著名的本地方法应该是<code>System.currentTimeMillis()</code>，JNI 使Java 深度使用操作系统的特性功能，复用非Java 代码。</p>
+
+<p>但是在项目过程中，如果大量使用其他语言来实现JNI，就会丧失跨平台特性，威胁到程序运行的稳定性。加入需要与本地代码交互，就可以用中间标准框架进行解耦，这样即使本地方法崩溃也不至于影响到JVM 的稳定。</p>
+
+<hr />
+
+<h2>Program Counter Register 程序计数器</h2>
+
+<p><strong>程序计数器是一块较小的内存空间。是线程私有的，它可以看作是当前线程所执行的字节码的行号指示器</strong>。</p>
+
+<p>简单来说因为代码是在线程中运行的，线程有可能被挂起。即CPU一会执行线程A，线程A还没有执行完被挂起了，接着执行线程B，最后又来执行线程A了，CPU需要知道执行线程A的哪一部分指令，线程计数器会告诉CPU。</p>
+
+<p>为了线程切换后能恢复到正确的执行位置，每条线程都需要有一个独立的程序计数器，各条线程之间计数器互不影响，独立存储。每个线程在创建后，都会产生自己的程序计数器和栈帧，程序计数器用来存放执行指令的偏移量和行号指示器等，线程执行或恢复都要依赖程序计数器。此区域也不会发生内存溢出异常。</p>
+
+<hr />
+
+<h2>直接内存</h2>
+
+<p>在JDK 1.4中新加入了<strong>NIO（New Input/Output）类，引入了一种基于通道（Channel）与缓冲区（Buffer）的I/O方式，它可以使用Native函数库直接分配堆外内存，然后通过一个存储在Java堆中的DirectByteBuffer对象作为这块内存的引用进行操作</strong>。这样能在一些场景中显著提高性能，因为避免了在Java堆和Native堆中来回复制数据。</p>
+
+<hr />
+
+<h2>Code Cache</h2>
+
+<p><strong>JVM代码缓存是JVM将其字节码存储为本机代码的区域</strong>，我们将可执行本机代码的每个块称为<code>nmethod</code>。该<code>nmethod</code>可能是一个完整的或内联Java方法。</p>
+
+<p>实时（JIT）编译器是代码缓存区域的最大消费者。这就是为什么一些开发人员将此内存称为JIT代码缓存的原因。</p>
+
+</body>
+</html>
+

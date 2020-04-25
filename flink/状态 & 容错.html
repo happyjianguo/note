@@ -26,7 +26,7 @@
 
 <h3>容错</h3>
 
-<p>Flink的容错机制的核心部分是制作分布式数据流和操作算子状态的一致性快照。这些快照充当一致性checkpoint，系统可以在发生故障时回滚。</p>
+<p><strong>Flink 的容错机制的核心部分是制作分布式数据流和操作算子状态的一致性快照</strong>。这些快照充当一致性checkpoint，系统可以在发生故障时回滚。</p>
 
 <p>容错需要做到：</p>
 
@@ -54,23 +54,25 @@
 	<li>Raw State</li>
 </ul>
 
+<h3>Operator State</h3>
+
+<p><strong>一个operator state 和一个并发的operator instance 绑定</strong>。即如果operator 的并行度为2，那么其应该有两个对应的operator state。</p>
+
+<p>一个operator 的状态不能被其他operator 所访问到。</p>
+
+<p>当程序的并行数改变时，Operator State 接口支持在并行算子实例之间重新分发状态。</p>
+
 <h3>Keyed State</h3>
+
+<p><strong>可以把Keyed State 当作根据key 值进行分区的Operator State，每个key 对应一个分区</strong>。</p>
 
 <p>Keyed State 总是和key 相关，并且只能用在KeyedStream 上的functions 和operators。</p>
 
-<p>可以把Keyed State 当作分区/分片的Operator State，每个key 对应一个分区。</p>
-
-<p>每一个Keyed-state 逻辑上和一个唯一的&lt;parallel-operator-instance, key&gt;绑定，由于每一个key 属于一个keyed operator 的一个并行实例，因此可以把一个Keyed-state 当作&lt;operator, key&gt;。</p>
+<p>每一个Keyed-state 逻辑上和一个唯一的&lt;parallel-operator-instance, key&gt;绑定，由于<strong>每一个key 属于一个keyed operator 的一个并行实例</strong>，因此可以把一个Keyed-state 当作&lt;operator, key&gt;。</p>
 
 <p>Keyed State 可以进一步组织成Key Groups。Key Groups 是Flink 重新分发Keyed State 的一个原子单元；Key Group 的数量和最大并行数相同。</p>
 
-<p>在运行时，每一个keyed operator 的并行实例处理一个或多个Key Groups。</p>
-
-<h3>Operator State</h3>
-
-<p>每个Operator State 和一个keyed operator 的并行实例绑定。</p>
-
-<p>当程序的并行数改变时，Operator State 接口支持在并行算子实例之间重新分发状态。</p>
+<p>在运行时，<strong>每一个keyed operator 的并行实例处理一个或多个Key Groups</strong>。</p>
 
 <h3>Managed State &amp; Raw State</h3>
 
@@ -88,13 +90,106 @@
 
 <h3>Using Managed Keyed State</h3>
 
+<p>Managed keyed state 接口提供了对不同state 类型的访问，这些state 的作用域为当前输入元素的key。也就是说Keyed State 只能用在KeyedStream 上。</p>
+
+<h4>Keyed Stream 的类型</h4>
+
+<ul>
+	<li>ValueState&lt;T&gt;：存储单值类型的state。可以使用<code>update(T)</code>进行更新，<code>T value()</code>进行检索；</li>
+	<li>ListState&lt;T&gt;：存储一个list。可以使用<code>add(T)</code>或<code>addAll(list&lt;T&gt;)</code>添加元素，使用<code>Iterable&lt;T&gt; get()</code>检索一个Iterable，也可以使用<code>update(List&lt;T&gt;)</code>重写一个list；</li>
+	<li>ReducingState&lt;T&gt;：存储一个单值，该值代表所有添加到state 中的值的聚合。接口类似于ListState&lt;T&gt;，但是使用<code>add(T)</code>添加的元素会通过指定的<code>ReduceFunction</code>来reduce 为一个聚合；</li>
+	<li>AggregatingState&lt;IN, OUT&gt;：存储一个单值，该值代表所有添加到state 中的值的聚合。与<code>ReducingState</code>相反，聚合类型可能与state 中的元素类型不同；</li>
+	<li>FoldingState&lt;T, ACC&gt;：deprecated in Flink 1.4；</li>
+	<li>MapState&lt;UK, UV&gt;：存储一个mappings 的列表。可以将key-value 键值对put 进去，并在所有当前存储的mappings 上检索一个iterable</li>
+</ul>
+
+<p>所有类型的state 都有一个<code>clear()</code>方法，用于清除当前活动的key 的state，即输入元素的key。</p>
+
+<p>这些state 对象只能用于与state 交互。State 不需要一定要存储在内部，也可能存储在磁盘或其他地方。</p>
+
+<p>从state 获取值依赖于输入元素的key，因此如果涉及的key 不同，那么在一次用户函数中调用得到的值可能与另一次调用得到的值不相同。</p>
+
+<h4>使用</h4>
+
+<p><strong>要得到一个state 句柄，首先要创建一个<code>StateDescriptor</code></strong>。它持有一个state 的名字，和state type，可能还持有一个user-specified function 如<code>ReduceFunction</code>。</p>
+
+<p>取决于你想要检索什么类型的state，可以创建不同的<code>StateDescriptor</code>：<code>ValueStateDescriptor</code>,<code>ListStateDescriptor</code>,<code>ReducingStateDescriptor</code>, <code>FoldingStateDescriptor&nbsp;</code>or <code>MapStateDescriptor</code></p>
+
+<p><strong>State 通过<code>RuntimeContext</code>访问，因此只能在rich functions 中使用</strong>。<code>RichFunction</code>中的<code>RuntimeCOntext</code>又如下方法访问state：</p>
+
+<ul>
+	<li><code>ValueState&lt;T&gt; getState(ValueStateDescriptor&lt;T&gt;)</code></li>
+	<li><code>ReducingState&lt;T&gt; getReducingState(ReducingStateDescriptor&lt;T&gt;)</code></li>
+	<li><code>ListState&lt;T&gt; getListState(ListStateDescriptor&lt;T&gt;)</code></li>
+	<li><code>AggregatingState&lt;IN, OUT&gt;  getAggregatingState(AggregatingStateDescriptor&lt;IN, ACC, OUT&gt;)</code></li>
+	<li><code>FoldingState&lt;T, ACC&gt; getFoldingState(FoldingStateDescriptor&lt;T, ACC&gt;)</code></li>
+	<li><code>MapState&lt;UK, UV&gt; getMapState(MapStateDescriptor&lt;UK, UV&gt;)</code></li>
+</ul>
+
 <h4>State Time-To-Live (TTL)</h4>
 
-<h4>State in the Scala DataStream API</h4>
+<p>任何类型的keyed state 都可以分配一个TTL。如果配置了TTL 并且state 的值过期了，这个值就会被清除。</p>
+
+<p>所有state 集合类型都支持per-entry 设置TTL，这意味着列表元素和map entry 独立过期。</p>
+
+<p>为了使用state TTL 首先必须build 一个<code>StateTtlConfig</code>。TTL 功能可以在任何state descriptor 中通过传递配置启用：</p>
+
+<pre><code>StateTtlConfig ttlConfig = StateTtlConfig
+	.newBuilder(Time.seconds(1))
+	.setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+	.setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
+	.build();
+ValueStateDescriptor&lt;String&gt; stateDescriptor = new ValueStateDescriptor&lt;&gt;(&quot;state&quot;, String.class);
+stateDescriptor.enableTimeToLive(ttlConfig);
+</code></pre>
+
+<p>TTL 配置有如下这些选项需要注意：</p>
+
+<ul>
+	<li><code>newBuilder()</code>的第一个参数是强制的，代表time-to-live 的值；</li>
+	<li>update type 配置了何时刷新状态：
+
+		<ul>
+			<li><code>StateTtlConfig.UpdateType.OnCreateAndWrite</code>：默认选项，只在创建和写访问时；</li>
+			<li><code>StateTtlConfig.UpdateType.OnReadAndWrite</code>：也在读访问时</li>
+		</ul></li>
+	<li>state visibility 配置了在读访问时是否返回过期值（如果该值还没有被清除）：
+
+		<ul>
+			<li><code>StateTtlConfig.StateVisibility.NeverReturnExpired</code>：默认选项，永远不返回；</li>
+			<li><code>StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp</code>：如果还存在就返回</li>
+		</ul></li>
+</ul>
 
 <h3>Using Managed Operator State</h3>
 
+<p><strong>Stateful function 可以通过实现更通用的<code>CheckpointedFunction</code>接口或者<code>ListCheckpointed&lt;T extends Serializable&gt;</code>接口来使用managed operator state</strong>。</p>
+
+<h4>CheckpointedFunction</h4>
+
+<p>CheckpointedFunction 接口通过不同redistribution schemes 提供了对non-keyed state 的访问，它需要实现两个方法：</p>
+
+<pre><code>void snapshotState(FunctionSnapshotContext context) throws Exception;
+void initializeState(FunctionInitializationContext context) throws Exception;
+</code></pre>
+
+<p>不管何时要做一次checkpoint 的时候都会调用<code>snapshotState()</code>。</p>
+
+<p>每次初始化user-defined function 时都会调用<code>initializeState()</code>，无论是在函数第一次出实话时还是在函数从之前的checkpoint 恢复时。因此，<code>initializeState()</code>不只是不同类型state 初始化的地方，还是包含state 恢复逻辑的地方。</p>
+
+<h4>ListCheckpointed</h4>
+
+<p>ListCheckpointed 接口是CheckpointedFunction 的一个更有限的变体，它只支持带有偶数分割redistribution 方案的list-style state。它也需要实现两个方法：</p>
+
+<pre><code>List&lt;T&gt; snapshotState(long checkpointId, long timestamp) throws Exception;
+void restoreState(List&lt;T&gt; state) throws Exception;
+</code></pre>
+
+<p>Operator 要在<code>snaoshotState()</code>方法中向checkpoint 返回一个对象列表，<code>restoreState()</code>必须在恢复时处理这个列表。如果state 不可重分区，则可以始终返回一个<code>Collections.singletonList(MY_STATE)</code>。</p>
+
 <h4>Stateful Source Functions</h4>
+
+<p>与其他operator 相比，Stateful Source 需要多加注意。为了使state 和输出集合的更新是原子的（失败/恢复时需要exactly-once 语义），用户需要从source 的context 中得到一个锁。</p>
 
 <hr />
 
@@ -274,9 +369,29 @@ env.getCheckpointConfig().setPreferCheckpointForRecovery(true);
 
 <hr />
 
-<h2>State Schema Evolution</h2>
+<h2>Queryable State(1.10 Beta)</h2>
 
-<h2>Custom Serialization for Managed State</h2>
+<p>该特性可以将Flink 的manager keyed state 暴露在外面，并允许用户在外面查询一个Flink job 的state。</p>
+
+<p>在某些场景下，queryable state 消除了与外部系统（如key-value 存储系统）进行分布式操作/事务的需要，而这经常是实践中瓶颈之处。</p>
+
+<p>另外该特性可能对于debugging 特别有用。</p>
+
+<h3>架构</h3>
+
+<p>Queryable State 特性由三部分组成：</p>
+
+<ul>
+	<li>QueryableStateClient：在Flink 集群外运行，负责提交用户的queries；</li>
+	<li>QueryableStateClientProxy：在Flink 集群的每一个TaskManager 上运行，负责接收client 的queries，从负责的TaskManager 获取请求的状态并返回给client；</li>
+	<li>QueryableStateServer：在Flink 集群的每一个TaskManager 上运行，负责为本地存储state 提供服务</li>
+</ul>
+
+<p>Client 连接其中一个proxies，并发送一个与指定key 相关联的state 请求。</p>
+
+<p>keyed state 被组织为Key Groups，每一个TaskManager 分配一个或多个Key Groups。为了寻找哪一个TaskManager 负责持有请求的key 的Key Groups，proxy 需要询问JobManager。</p>
+
+<p>根据JobManager 的回复，proxy 会在TaskManager 上的QueryableStateServer 查询state，并将相应返回给client。</p>
 
 </body>
 </html>

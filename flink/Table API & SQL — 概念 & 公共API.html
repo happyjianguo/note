@@ -57,10 +57,10 @@ tableEnv.execute(&quot;java_job&quot;);
 <p>TableEnvironment 是Table API 和SQL 的一个核心概念，它负责：</p>
 
 <ul>
-	<li>在内部catelog 中注册表；</li>
-	<li>注册一个外部catelog；</li>
+	<li>在内部catalog 中注册一个Table；</li>
+	<li>注册一个外部catalog；</li>
 	<li>执行SQL 查询；</li>
-	<li>注册一个用户自定义函数；</li>
+	<li>注册一个udf；</li>
 	<li>将<code>DataStream</code>或<code>DataSet</code>转换为一个<code>Table</code>；</li>
 	<li>持有对<code>ExecutionEnvironment</code>或<code>StreamExecutionEnvironment</code>的引用</li>
 </ul>
@@ -69,13 +69,73 @@ tableEnv.execute(&quot;java_job&quot;);
 
 <p><code>TableEnvironment</code>通过调用带有<code>StreamExecutionEnvironment</code>或者<code>ExecutionEnvironment</code>和一个<code>TableConfig</code>的静态<code>BatchTableEnvironment.create()</code>或者<code>StreamTableEnvironment.create()</code>方法来创建。</p>
 
+<p><code>TableConfig</code>可以用来配置<code>TableEnvironment</code>或者自定义查询优化和翻译过程。</p>
+
+<pre><code>// **********************
+// FLINK STREAMING QUERY
+// **********************
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.table.api.java.StreamTableEnvironment;
+
+EnvironmentSettings fsSettings = EnvironmentSettings.newInstance().useOldPlanner().inStreamingMode().build();
+StreamExecutionEnvironment fsEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+StreamTableEnvironment fsTableEnv = StreamTableEnvironment.create(fsEnv, fsSettings);
+// or TableEnvironment fsTableEnv = TableEnvironment.create(fsSettings);
+
+// ******************
+// FLINK BATCH QUERY
+// ******************
+import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.table.api.java.BatchTableEnvironment;
+
+ExecutionEnvironment fbEnv = ExecutionEnvironment.getExecutionEnvironment();
+BatchTableEnvironment fbTableEnv = BatchTableEnvironment.create(fbEnv);
+
+// **********************
+// BLINK STREAMING QUERY
+// **********************
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.table.api.java.StreamTableEnvironment;
+
+StreamExecutionEnvironment bsEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+EnvironmentSettings bsSettings = EnvironmentSettings.newInstance().useBlinkPlanner().inStreamingMode().build();
+StreamTableEnvironment bsTableEnv = StreamTableEnvironment.create(bsEnv, bsSettings);
+// or TableEnvironment bsTableEnv = TableEnvironment.create(bsSettings);
+
+// ******************
+// BLINK BATCH QUERY
+// ******************
+import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.table.api.TableEnvironment;
+
+EnvironmentSettings bbSettings = EnvironmentSettings.newInstance().useBlinkPlanner().inBatchMode().build();
+TableEnvironment bbTableEnv = TableEnvironment.create(bbSettings);
+</code></pre>
+
 <hr />
 
-<h2>在Catelog 中注册Table</h2>
+<h2>在Catalog 中创建Table</h2>
 
-<p><code>TableEnvironment</code>维护一个通过名字注册的表的catelog。</p>
+<p><code>TableEnvironment</code>维护一个通过identifier 创建的表的catalog 的map。</p>
 
-<p>表有两种：</p>
+<p>每一个identifier 由三部分组成：</p>
+
+<ul>
+	<li>catalog name</li>
+	<li>database name</li>
+	<li>object name</li>
+</ul>
+
+<p>Tables 可以是：</p>
+
+<ul>
+	<li>虚拟的（VIEWS）：VIEWS 可以通过存在的Table object 创建，通常是一个Query 的结果；</li>
+	<li>常规的（TABLES）：其描述了外部数据，如file、database table</li>
+</ul>
+
+<p>Tables 也可以分为两种：</p>
 
 <ul>
 	<li>input table：input table 可以在Table API 和SQL 的查询中引用，并提供input data；</li>
@@ -92,10 +152,23 @@ tableEnv.execute(&quot;java_job&quot;);
 
 <p>output table 可以通过<code>TableSink</code>注册。</p>
 
+<h3>Temporary vs Permanent tables（1.10）</h3>
+
+<p>Tables 可以是：</p>
+
+<ul>
+	<li>临时的，临时表总是存储在内存中。其绑定在单个Flink session 的生命周期中，只在创建它们的Flink session 中可见。不绑定到任何catalog 或database中，但可以在其中的namespace 中创建。如果删除了临时表对应的database，临时表不会被删除；</li>
+	<li> 永久的：在多个Flink session 和集群中可见。永久表需要一个catalog（如Hive Metastore）来维护关于表的metadata。一旦这个永久表被创建，其对任何连接catalog 的Flink session都是可见的，并且会一直存在到被显式的删除</li>
+</ul>
+
+<h4>shadowing</h4>
+
+<p>可以使用与已存在的永久表相同的identifier 注册一个临时表，临时表对永久表进行影子操作，使永久表在临时表存在时无法被访问，带有该identifier 的query 都会访问临时表进行执行。</p>
+
 <h3>注册Table</h3>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...;
 
 // table is the result of a simple projection query 
 Table projTable = tableEnv.scan(&quot;X&quot;).select(...);
@@ -104,14 +177,14 @@ Table projTable = tableEnv.scan(&quot;X&quot;).select(...);
 tableEnv.registerTable(&quot;projectedTable&quot;, projTable);
 </code></pre>
 
-<p>一个table 类似于关系型数据库中的视图，定义了table 的查询是没有经过优化的，但是当另一个查询引用这个table 的时候会内联定义了这个table 的查询。如果多个查询引用了同一个table，每一个查询都会内联这个table 的查询并执行多次，也就是说这个table 的result不会被共享。</p>
+<p>一个注册的table 类似于关系型数据库中的视图，定义了table 的查询是没有经过优化的，但是当另一个查询引用这个table 的时候会内联定义了这个table 的查询。如果多个查询引用了同一个table，每一个查询都会内联这个table 的查询并执行多次，也就是说这个table 的result不会被共享。</p>
 
 <h3>注册TableSource</h3>
 
 <p><code>TableSource</code>提供了对外部数据源的访问。</p>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...;
 
 // create a TableSource
 TableSource csvSource = new CsvTableSource(&quot;/path/to/file&quot;, ...);
@@ -125,7 +198,7 @@ tableEnv.registerTableSource(&quot;CsvTable&quot;, csvSource);
 <p><code>TableSink</code>可以用来将Table API 和SQL 的结果发送给外部存储系统。</p>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...;
 
 // create a TableSink
 TableSink csvSink = new CsvTableSink(&quot;/path/to/file&quot;, ...);
@@ -140,14 +213,14 @@ tableEnv.registerTableSink(&quot;CsvSinkTable&quot;, fieldNames, fieldTypes, csv
 
 <hr />
 
-<h2>注册一个外部Catelog</h2>
+<h2>注册一个外部Catalog（1.9）</h2>
 
-<p>外部catelog 可以提供关于外部数据库和表的一些信息，如表的名字，schema等；还提供了关于如何访问数据的信息。</p>
+<p>外部catalog 可以提供关于外部数据库和表的一些信息，如表的名字，schema等；还提供了关于如何访问数据的信息。</p>
 
-<p>外部catelog 可以通过实现<code>ExternalCatelog</code>接口来创建，并在<code>TableEnvironment</code>中注册。</p>
+<p>外部catalog 可以通过实现<code>ExternalCatelog</code>接口来创建，并在<code>TableEnvironment</code>中注册。</p>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...;
 
 // create an external catalog
 ExternalCatalog catalog = new InMemoryExternalCatalog();
@@ -156,7 +229,7 @@ ExternalCatalog catalog = new InMemoryExternalCatalog();
 tableEnv.registerExternalCatalog(&quot;InMemCatalog&quot;, catalog);
 </code></pre>
 
-<p>一旦在<code>TableEnvironment</code>中注册成功，所有在<code>ExternalCatelog</code>中定义的表都可以通过在Table API 和SQL 查询中指定路径（如catelog.database.table）来访问。</p>
+<p>一旦在<code>TableEnvironment</code>中注册成功，所有在<code>ExternalCatelog</code>中定义的表都可以通过在Table API 和SQL 查询中指定路径（如catalog.database.table）来访问。</p>
 
 <hr />
 
@@ -173,7 +246,7 @@ tableEnv.registerExternalCatalog(&quot;InMemCatalog&quot;, catalog);
 <p>如下是一个简单的Table API 聚合查询的示例：</p>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...; //
 
 // register Orders table
 
@@ -196,7 +269,7 @@ Table revenue = orders
 <p>如下是一个SQL 的示例：</p>
 
 <pre><code>// get a TableEnvironment
-TableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+TableEnvironment tableEnv = ...;
 
 // register Orders table
 
@@ -291,7 +364,8 @@ result.insertInto(&quot;CsvSinkTable&quot;);
 
 <pre><code>// get StreamTableEnvironment
 // registration of a DataSet in a BatchTableEnvironment is equivalent
-StreamTableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+StreamTableEnvironment tableEnv = ...;
+section
 
 DataStream&lt;Tuple2&lt;Long, String&gt;&gt; stream = ...
 
@@ -308,7 +382,8 @@ tableEnv.registerDataStream(&quot;myTable2&quot;, stream, &quot;myLong, myString
 
 <pre><code>// get StreamTableEnvironment
 // registration of a DataSet in a BatchTableEnvironment is equivalent
-StreamTableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+StreamTableEnvironment tableEnv = ...;
+section
 
 DataStream&lt;Tuple2&lt;Long, String&gt;&gt; stream = ...
 
@@ -336,7 +411,8 @@ Table table2 = tableEnv.fromDataStream(stream, &quot;myLong, myString&quot;);
 <p>当一个Table 是Streaming 的结果时，这个Table 是会被动态更新的。即当input stream 有新的记录到达时，Table 就会改变。因此，当这样一个动态查询转换为DataStream 时，需要对表的更新进行编码。</p>
 
 <pre><code>// get StreamTableEnvironment. 
-StreamTableEnvironment tableEnv = ...; // see &quot;Create a TableEnvironment&quot; section
+StreamTableEnvironment tableEnv = ...;
+section
 
 // Table with two fields (String name, Integer age)
 Table table = ...
@@ -456,6 +532,283 @@ Table table = tableEnv.fromDataStream(stream, &quot;f1 as myInt, f0 as myLong&qu
 	<li>已优化的逻辑查询计划；</li>
 	<li>物理执行计划</li>
 </ul>
+
+<hr />
+
+<h2>Catalog</h2>
+
+<p>Catalog 提供metadata，如databases、tables、partitions、views，以及访问存储在database 或其他外部系统的数据的functions 和information。</p>
+
+<p>数据处理的一个最重要的方面就是管理metadata。Metadata 可以是像临时表一样的临时metadata，或是在table environment 中注册的UDF，或是永久的metadata（如Hive Metastore）。</p>
+
+<p>Catalogs 提供统一的API 来管理metadata，并使其可以通过Table API 和SQL Query 进行访问。</p>
+
+<h3>Catalog 类型</h3>
+
+<h4>GenericInMemoryCatalog</h4>
+
+<p>GenericInMemoryCatalog 是一个catalog 的内存实现，所有对象都只在session 的生命周期内可用。</p>
+
+<h4>HiveCatalog</h4>
+
+<p>HiveCatalog 有两个目的：</p>
+
+<ul>
+	<li>作为pure Flink metadata 的持久化存储；</li>
+	<li>作为读写Hive metadata 的接口</li>
+</ul>
+
+<h4>User-Defined Catalog</h4>
+
+<p>Catalogs 是可插件的，用户可以通过实现Catalog 接口来开发自定义的catalogs。</p>
+
+<p>为了在SQL CLI 中使用自定义的catalogs，用户需要开发一个catalog 和相应的catalog factory。</p>
+
+<hr />
+
+<h2>在Catalog 中创建和注册Flink Tables</h2>
+
+<h3>使用SQL DDL</h3>
+
+<p>在Table API 和SQL 中，用户可以使用SQL DDL 在catalogs 中创建tables。</p>
+
+<p>Table API：</p>
+
+<pre><code>TableEnvironment tableEnv = ...
+
+// Create a HiveCatalog 
+Catalog catalog = new HiveCatalog(&quot;myhive&quot;, null, &quot;&lt;path_of_hive_conf&gt;&quot;, &quot;&lt;hive_version&gt;&quot;);
+
+// Register the catalog
+tableEnv.registerCatalog(&quot;myhive&quot;, catalog);
+
+// Create a catalog database
+tableEnv.sqlUpdate(&quot;CREATE DATABASE mydb WITH (...)&quot;);
+
+// Create a catalog table
+tableEnv.sqlUpdate(&quot;CREATE TABLE mytable (name STRING, age INT) WITH (...)&quot;);
+
+tableEnv.listTables(); // should return the tables in current catalog and database.
+</code></pre>
+
+<p>SQL Client：</p>
+
+<pre><code>// the catalog should have been registered via yaml file
+Flink SQL&gt; CREATE DATABASE mydb WITH (...);
+
+Flink SQL&gt; CREATE TABLE mytable (name STRING, age INT) WITH (...);
+
+Flink SQL&gt; SHOW TABLES;
+mytable
+</code></pre>
+
+<h3>使用Java/Scala/Python API</h3>
+
+<pre><code>TableEnvironment tableEnv = ...
+
+// Create a HiveCatalog 
+Catalog catalog = new HiveCatalog(&quot;myhive&quot;, null, &quot;&lt;path_of_hive_conf&gt;&quot;, &quot;&lt;hive_version&gt;&quot;);
+
+// Register the catalog
+tableEnv.registerCatalog(&quot;myhive&quot;, catalog);
+
+// Create a catalog database 
+catalog.createDatabase(&quot;mydb&quot;, new CatalogDatabaseImpl(...))
+
+// Create a catalog table
+TableSchema schema = TableSchema.builder()
+    .field(&quot;name&quot;, DataTypes.STRING())
+    .field(&quot;age&quot;, DataTypes.INT())
+    .build();
+
+catalog.createTable(
+        new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), 
+        new CatalogTableImpl(
+            schema,
+            new Kafka()
+                .version(&quot;0.11&quot;)
+                ....
+                .startFromEarlist(),
+            &quot;my comment&quot;
+        )
+    );
+    
+List&lt;String&gt; tables = catalog.listTables(&quot;mydb&quot;); // tables should contain &quot;mytable&quot;
+</code></pre>
+
+<hr />
+
+<h2>Catalog API</h2>
+
+<p>这里列出一些catalog program APIs，用户可以使用SQL DDL 完成一些相同的功能。</p>
+
+<h3>Database operations</h3>
+
+<pre><code>// create database
+catalog.createDatabase(&quot;mydb&quot;, new CatalogDatabaseImpl(...), false);
+
+// drop database
+catalog.dropDatabase(&quot;mydb&quot;, false);
+
+// alter database
+catalog.alterDatabase(&quot;mydb&quot;, new CatalogDatabaseImpl(...), false);
+
+// get databse
+catalog.getDatabase(&quot;mydb&quot;);
+
+// check if a database exist
+catalog.databaseExists(&quot;mydb&quot;);
+
+// list databases in a catalog
+catalog.listDatabases(&quot;mycatalog&quot;);
+</code></pre>
+
+<h3>Table operations</h3>
+
+<pre><code>// create table
+catalog.createTable(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogTableImpl(...), false);
+
+// drop table
+catalog.dropTable(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), false);
+
+// alter table
+catalog.alterTable(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogTableImpl(...), false);
+
+// rename table
+catalog.renameTable(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), &quot;my_new_table&quot;);
+
+// get table
+catalog.getTable(&quot;mytable&quot;);
+
+// check if a table exist or not
+catalog.tableExists(&quot;mytable&quot;);
+
+// list tables in a database
+catalog.listTables(&quot;mydb&quot;);
+</code></pre>
+
+<h3>View operations</h3>
+
+<pre><code>// create view
+catalog.createTable(new ObjectPath(&quot;mydb&quot;, &quot;myview&quot;), new CatalogViewImpl(...), false);
+
+// drop view
+catalog.dropTable(new ObjectPath(&quot;mydb&quot;, &quot;myview&quot;), false);
+
+// alter view
+catalog.alterTable(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogViewImpl(...), false);
+
+// rename view
+catalog.renameTable(new ObjectPath(&quot;mydb&quot;, &quot;myview&quot;), &quot;my_new_view&quot;);
+
+// get view
+catalog.getTable(&quot;myview&quot;);
+
+// check if a view exist or not
+catalog.tableExists(&quot;mytable&quot;);
+
+// list views in a database
+catalog.listViews(&quot;mydb&quot;);
+</code></pre>
+
+<h3>Partition operations</h3>
+
+<pre><code>// create view
+catalog.createPartition(
+    new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;),
+    new CatalogPartitionSpec(...),
+    new CatalogPartitionImpl(...),
+    false);
+
+// drop partition
+catalog.dropPartition(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogPartitionSpec(...), false);
+
+// alter partition
+catalog.alterPartition(
+    new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;),
+    new CatalogPartitionSpec(...),
+    new CatalogPartitionImpl(...),
+    false);
+
+// get partition
+catalog.getPartition(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogPartitionSpec(...));
+
+// check if a partition exist or not
+catalog.partitionExists(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogPartitionSpec(...));
+
+// list partitions of a table
+catalog.listPartitions(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;));
+
+// list partitions of a table under a give partition spec
+catalog.listPartitions(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), new CatalogPartitionSpec(...));
+
+// list partitions of a table by expression filter
+catalog.listPartitions(new ObjectPath(&quot;mydb&quot;, &quot;mytable&quot;), Arrays.asList(epr1, ...));
+</code></pre>
+
+<h3>Function operations</h3>
+
+<pre><code>// create function
+catalog.createFunction(new ObjectPath(&quot;mydb&quot;, &quot;myfunc&quot;), new CatalogFunctionImpl(...), false);
+
+// drop function
+catalog.dropFunction(new ObjectPath(&quot;mydb&quot;, &quot;myfunc&quot;), false);
+
+// alter function
+catalog.alterFunction(new ObjectPath(&quot;mydb&quot;, &quot;myfunc&quot;), new CatalogFunctionImpl(...), false);
+
+// get function
+catalog.getFunction(&quot;myfunc&quot;);
+
+// check if a function exist or not
+catalog.functionExists(&quot;myfunc&quot;);
+
+// list functions in a database
+catalog.listFunctions(&quot;mydb&quot;);
+</code></pre>
+
+<hr />
+
+<h2>Table API and SQL for Catalog</h2>
+
+<h3>注册Catalog</h3>
+
+<p>用户可以访问一个默认的内存式的catalog，该catalog 叫做<code>default_catalog</code>，总是被默认创建的。</p>
+
+<p>该catalog 默认有一个单一的database 叫做<code>default_database</code>。</p>
+
+<p>用户也可以在存在的Flink session 中注册附加的catalogs。</p>
+
+<pre><code>tableEnv.registerCatalog(new CustomCatalog(&quot;myCatalog&quot;));
+</code></pre>
+
+<h3>改变当前的Catalog 和Database</h3>
+
+<p>Flink 总是在当前catalog 和database 中寻找tables、views 和UDFs。</p>
+
+<pre><code>tableEnv.useCatalog(&quot;myCatalog&quot;);
+tableEnv.userDatabase(&quot;myDb&quot;);
+</code></pre>
+
+<p>访问非当前catalog 的metadata，可以通过全名格式：<code>catalog.database.object</code>。</p>
+
+<pre><code>tableEnv.from(&quot;not_the_current_catalog.not_the_current_db.my_table&quot;);
+</code></pre>
+
+<h3>List Available Catalogs</h3>
+
+<pre><code>tableEnv.listCatalogs();
+</code></pre>
+
+<h3>List Available Databases</h3>
+
+<pre><code>tableEnv.listDatabases();
+</code></pre>
+
+<h3>List Available Tables</h3>
+
+<pre><code>tableEnv.listTables();
+</code></pre>
 
 </body>
 </html>

@@ -9,7 +9,7 @@
 <body>
 <h1>Window 机制</h1>
 
-<p>Flink 底层引擎是一个流式引擎，在上面实现了流处理和批处理。而Window 就是从Streaming 到Batch 的一个桥梁。</p>
+<p>Flink 底层引擎是一个流式引擎，实现了流处理和批处理。而Window 就是从Streaming 到Batch 的一个桥梁。</p>
 
 <hr />
 
@@ -73,9 +73,25 @@ keyedStream.window(ProcessingTimeSessionWindows.withGap(Time.seconds(2)))
 
 <hr />
 
-<h2>Window 组件</h2>
+<h2>Window 的实现</h2>
 
-<p>得益于Flink Window API 松耦合设计，我们可以非常灵活地定义符合特定业务的Window。Flink 中定义一个Window 主要需要三个组件：</p>
+<figure><img src="/Users/xerxes/note/flink/src/Window%E7%9A%84%E5%AE%9E%E7%8E%B0.jpg"/></figure>
+
+<p>图中所有组件位于同一个算子（Window Operator）中，数据流进入算子，每一个到达的元素都会被交给WindowAssigner。WindowAssigner 会决定元素被放到哪个或哪些Window，可能会创建新的Window。</p>
+
+<p>Window 本身只是一个ID标识符，其内部可能存储了一些元数据，如TimeWindow 中有开始时间和结束时间，但是并不会存储窗口中的元素。窗口中的元素实际存储在Key/Value State 中，Key为Window，Value 为元素集合。为了保证窗口的容错性，该实现依赖Flink 的State 机制。</p>
+
+<p>每一个Window 都拥有一个属于自己的Trigger，Trigger 上会有定时器，用来决定一个Window 何时被计算或清除。每当有元素加入到该窗口，或者之前注册的定时器超时了，那么Trigger 都会被调用。</p>
+
+<p>当指定了Evictor 并且Trigger 返回了FIRE，窗口中的元素集合就会交给Evictor。Evictor 主要用来遍历窗口的元素列表，并决定最先进入窗口的多少个元素需要被移除。剩余的元素会交给用户指定的函数进行窗口计算。如果没有指定Evictor，窗口中的元素会一起交给函数进行计算。</p>
+
+<p>计算函数收到了窗口的元素（可能经过了Evictor的过滤），并计算出窗口的结果值，然后发送给下游。窗口的结果值可以是一个也可以是多个。DataStream API 上可以接收不同类型的计算函数，包括预定义的<code>sum(),min(),max()</code>，还有<code>ReduceFunction,FoldFunction,WindowFunction</code>等。<code>WindowFunction</code>是最常用的计算函数，其他的预定义函数基本都是基于该函数来实现的。</p>
+
+<p>Flink 对于一些聚合类的窗口计算做了优化，因为聚合类的计算不需要将窗口中的所有数据都保存下来，只需要保存一个result值，因此每个进入窗口的元素都会执行一次聚合函数并修改result值。这样可以大大降低内存的消耗并提升性能。但是如果用户定义了Evictor，则不会启用对聚合窗口的优化，因为Evictor 需要遍历窗口中所有元素，必须要将窗口所有元素保留下来。</p>
+
+<h3>Window 组件</h3>
+
+<p>Flink 中定义一个Window 主要需要三个组件：</p>
 
 <ul>
 	<li>WindowAssigner：为数据分配窗口</li>
@@ -83,25 +99,25 @@ keyedStream.window(ProcessingTimeSessionWindows.withGap(Time.seconds(2)))
 	<li>Evictor：实现灵活清理窗口中数据时机</li>
 </ul>
 
-<h3>WindowAssigner</h3>
+<h4>WindowAssigner</h4>
 
 <pre><code>/*** WindowAssigner关键接口定义 ***/
 public abstract class WindowAssigner&lt;T, W extends Window&gt; implements Serializable {
 
-    /** 分配数据到窗口集合并返回 */
-    public abstract Collection&lt;W&gt; assignWindows(T element, long timestamp, WindowAssignerContext context);
+/** 分配数据到窗口集合并返回 */
+public abstract Collection&lt;W&gt; assignWindows(T element, long timestamp, WindowAssignerContext context);
 }
 </code></pre>
 
 <p>当有数据流入到Window Operator 时需要按照一定规则将数据分配给窗口，这个工作由WindowAssigner 完成。</p>
 
-<h4>内置实现的Window Assigners：</h4>
+<h5>内置实现的Window Assigners：</h5>
 
 <figure><img src="/Users/xerxes/note/flink/src/%E5%86%85%E7%BD%AEWindowAssigner%E4%BE%9D%E8%B5%96%E5%85%B3%E7%B3%BB.jpg"/></figure>
 
 <figure><img src="/Users/xerxes/note/flink/src/%E5%86%85%E7%BD%AEWindowAssigner%E4%BB%8B%E7%BB%8D.jpg"/></figure>
 
-<h3>Trigger</h3>
+<h4>Trigger</h4>
 
 <pre><code>/** Trigger关键接口定义 */
 public abstract class Trigger&lt;T, W extends Window&gt; implements Serializable {
@@ -121,13 +137,13 @@ public abstract class Trigger&lt;T, W extends Window&gt; implements Serializable
 
 <p>当有数据流入Window Operator 时会触发<code>onElement</code>方法，当处理时间和事件生效时会触发<code>onProcessingTime</code>和<code>EventTime</code>方法。每个触发动作的返回结果用<code>TriggerResult</code>定义。</p>
 
-<h4>内置实现的Trigger</h4>
+<h5>内置实现的Trigger</h5>
 
 <figure><img src="/Users/xerxes/note/flink/src/%E5%86%85%E7%BD%AETrigger%E4%BE%9D%E8%B5%96%E5%85%B3%E7%B3%BB.jpg"/></figure>
 
 <figure><img src="/Users/xerxes/note/flink/src/%E5%86%85%E7%BD%AETrigger%E4%BB%8B%E7%BB%8D.jpg"/></figure>
 
-<h4>TriggerResult 返回类型及说明</h4>
+<h5>TriggerResult 返回类型及说明</h5>
 
 <pre><code>public enum TriggerResult {
 	CONTINUE,FIRE,PURGE,FIRE_AND_PURGE;
@@ -141,7 +157,7 @@ public abstract class Trigger&lt;T, W extends Window&gt; implements Serializable
 	<li><code>FIRE_AND_PURGE</code>：<code>FIRE</code>和<code>PURGE</code>组合，即处理并移除窗口中的数据</li>
 </ul>
 
-<h3>Evictor</h3>
+<h4>Evictor</h4>
 
 <pre><code>public interface Evictor&lt;T, W extends Window&gt; extends Serializable {
     /** 在窗口处理前删除数据 */
@@ -153,7 +169,7 @@ public abstract class Trigger&lt;T, W extends Window&gt; implements Serializable
 
 <p>如果定义了Evictor，窗口执行处理前会删除窗口内指定数据再交给窗口处理，或等窗口执行处理后再删除窗口中指定数据。</p>
 
-<h4>内置实现的Evictor</h4>
+<h5>内置实现的Evictor</h5>
 
 <figure><img src="/Users/xerxes/note/flink/src/%E5%86%85%E7%BD%AEEvictor%E4%BE%9D%E8%B5%96%E5%85%B3%E7%B3%BB.jpg"/></figure>
 
@@ -161,21 +177,354 @@ public abstract class Trigger&lt;T, W extends Window&gt; implements Serializable
 
 <hr />
 
-<h2>Window 的实现</h2>
+<h2>Operator</h2>
 
-<figure><img src="/Users/xerxes/note/flink/src/Window%E7%9A%84%E5%AE%9E%E7%8E%B0.jpg"/></figure>
+<p>Windows 是处理无限数据流的核心。Windows 将stream 切分放入buckets 中，使用户可以对其进行运算。</p>
 
-<p>图中所有组件位于同一个算子（Window Operator）中，数据流进入算子，每一个到达的元素都会被交给WindowAssigner。WindowAssigner 会决定元素被放到哪个或哪些Window，可能会创建新的Window。</p>
+<p>如下展示了<strong>Keyed Windows</strong>和<strong>Non-Keyed Windows</strong>两种windowed 程序的一般结构，它们之间的区别在于<strong>Keyed Windows</strong>调用<code>keyBy()</code>，并且它的<code>window()</code>在<strong>Non-Keyed Windows</strong>中变成了<code>windowAll()</code></p>
 
-<p>Window 本身只是一个ID标识符，其内部可能存储了一些元数据，如TimeWindow 中有开始时间和结束时间，但是并不会存储窗口中的元素。窗口中的元素实际存储在Key/Value State 中，Key为Window，Value 为元素集合。为了保证窗口的容错性，该实现依赖Flink 的State 机制。</p>
+<p><strong>Keyed Windows</strong></p>
 
-<p>每一个Window 都拥有一个属于自己的Trigger，Trigger 上会有定时器，用来决定一个Window 何时被计算或清除。每当有元素加入到该窗口，或者之前注册的定时器超时了，那么Trigger 都会被调用。</p>
+<pre><code>stream
+       .keyBy(...)               &lt;-  keyed versus non-keyed windows
+       .window(...)              &lt;-  required: &quot;assigner&quot;
+      [.trigger(...)]            &lt;-  optional: &quot;trigger&quot; (else default trigger)
+      [.evictor(...)]            &lt;-  optional: &quot;evictor&quot; (else no evictor)
+      [.allowedLateness(...)]    &lt;-  optional: &quot;lateness&quot; (else zero)
+      [.sideOutputLateData(...)] &lt;-  optional: &quot;output tag&quot; (else no side output for late data)
+       .reduce/aggregate/fold/apply()      &lt;-  required: &quot;function&quot;
+      [.getSideOutput(...)]      &lt;-  optional: &quot;output tag&quot;
+</code></pre>
 
-<p>当指定了Evictor 并且Trigger 返回了FIRE，窗口中的元素集合就会交给Evictor。Evictor 主要用来遍历窗口的元素列表，并决定最先进入窗口的多少个元素需要被移除。剩余的元素会交给用户指定的函数进行窗口计算。如果没有指定Evictor，窗口中的元素会一起交给函数进行计算。</p>
+<p><strong>Non-Keyed Windows</strong></p>
 
-<p>计算函数收到了窗口的元素（可能经过了Evictor的过滤），并计算出窗口的结果值，然后发送给下游。窗口的结果值可以是一个也可以是多个。DataStream API 上可以接收不同类型的计算函数，包括预定义的<code>sum(),min(),max()</code>，还有<code>ReduceFunction,FoldFunction,WindowFunction</code>等。<code>WindowFunction</code>是最常用的计算函数，其他的预定义函数基本都是基于该函数来实现的。</p>
+<pre><code>stream
+       .windowAll(...)           &lt;-  required: &quot;assigner&quot;
+      [.trigger(...)]            &lt;-  optional: &quot;trigger&quot; (else default trigger)
+      [.evictor(...)]            &lt;-  optional: &quot;evictor&quot; (else no evictor)
+      [.allowedLateness(...)]    &lt;-  optional: &quot;lateness&quot; (else zero)
+      [.sideOutputLateData(...)] &lt;-  optional: &quot;output tag&quot; (else no side output for late data)
+       .reduce/aggregate/fold/apply()      &lt;-  required: &quot;function&quot;
+      [.getSideOutput(...)]      &lt;-  optional: &quot;output tag&quot;
+</code></pre>
 
-<p>Flink 对于一些聚合类的窗口计算做了优化，因为聚合类的计算不需要将窗口中的所有数据都保存下来，只需要保存一个result值，因此每个进入窗口的元素都会执行一次聚合函数并修改result值。这样可以大大降低内存的消耗并提升性能。但是如果用户定义了Evictor，则不会启用对聚合窗口的优化，因为Evictor 需要遍历窗口中所有元素，必须要将窗口所有元素保留下来。</p>
+<h3>Window Lifecycle</h3>
+
+<p>Window 会在属于这个window 的第一个元素到达时被创建，然后当时间超过结束时间和用户指定的允许延迟时间时，被完全移除。Flink 保证只删除基于时间的window，不删除其他类型的window（如global window）。</p>
+
+<p>例如用event-time-based 窗口策略每5分钟创建tumbling window，允许延迟1分钟，Flink 会在第一个元素落在12:00-12:05之间时创建一个window，之后在watermark 过了12:06时移除这个window。</p>
+
+<h3>Keyed Windows vs Non-Keyed Windows</h3>
+
+<p>定义window 之前第一个要做的就是指定stream 是否要被keyed。使用<code>KeyBy(...)</code>将无限的stream 切分成logical keyed streams。</p>
+
+<p>在keyed stream 中，incoming event 的任何属性都可以用作key。并且keyed stream 允许多个task 并行执行windowed computation，每个logical keyed stream 都可以独立于其他stream 进行处理。所有引用相同key 的元素会被发送到同一个任务执行。</p>
+
+<h3>Window Assigners</h3>
+
+<p>WindowAssigner 负责将每一个输入的元素分配给一个或多个window，可以通过在<code>window()</code>或<code>windowAll()</code>中指定<code>WindowAssigner</code>来定义。</p>
+
+<p>Flink 提供了几个预定义的window assigner：tumbling window、sliding window、session window 和global window。也可以通过扩展<code>WindowAssigner</code>来实现自定义的window assigner。</p>
+
+<h4>Tumbling Windows</h4>
+
+<pre><code>DataStream&lt;T&gt; input = ...;
+
+// tumbling event-time windows
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(TumblingEventTimeWindows.of(Time.seconds(5)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+
+// tumbling processing-time windows
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+
+// daily tumbling event-time windows offset by -8 hours.
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(TumblingEventTimeWindows.of(Time.days(1), Time.hours(-8)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+</code></pre>
+
+<h4>Sliding Windows</h4>
+
+<pre><code>DataStream&lt;T&gt; input = ...;
+
+// sliding event-time windows
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(SlidingEventTimeWindows.of(Time.seconds(10), Time.seconds(5)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+
+// sliding processing-time windows
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(SlidingProcessingTimeWindows.of(Time.seconds(10), Time.seconds(5)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+
+// sliding processing-time windows offset by -8 hours
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(SlidingProcessingTimeWindows.of(Time.hours(12), Time.hours(1), Time.hours(-8)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+</code></pre>
+
+<h4>Session Windows</h4>
+
+<pre><code>DataStream&lt;T&gt; input = ...;
+
+// event-time session windows with static gap
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(EventTimeSessionWindows.withGap(Time.minutes(10)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+    
+// event-time session windows with dynamic gap
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(EventTimeSessionWindows.withDynamicGap((element) -&gt; {
+        // determine and return session gap
+    }))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+
+// processing-time session windows with static gap
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(ProcessingTimeSessionWindows.withGap(Time.minutes(10)))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+    
+// processing-time session windows with dynamic gap
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(ProcessingTimeSessionWindows.withDynamicGap((element) -&gt; {
+        // determine and return session gap
+    }))
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+</code></pre>
+
+<h4>Global Windows</h4>
+
+<pre><code>DataStream&lt;T&gt; input = ...;
+
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(GlobalWindows.create())
+    .&lt;windowed transformation&gt;(&lt;window function&gt;);
+</code></pre>
+
+<h3>Window Functions</h3>
+
+<p>定义好window assigner 之后，需要在window function 中指定对window 的计算。</p>
+
+<p>Window function 可以是ReduceFunction、AggregateFunction、FoldFunction&nbsp;或ProcessWindowFunction 中的一个。</p>
+
+<p>前两个function 可以更高效的执行，因为Flink 可以在每个window 到达时增量地运算。</p>
+
+<h4>ReduceFunction</h4>
+
+<p>ReduceFunction 指定了两个输入元素如何结合来生成相同类型的输出元素。</p>
+
+<p>Flink 使用ReduceFunction 增量聚合window 中的元素。</p>
+
+<p>如下示例将window 中的所有tuple 的第二个字段相加：</p>
+
+<pre><code>DataStream&lt;Tuple2&lt;String, Long&gt;&gt; input = ...;
+
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(&lt;window assigner&gt;)
+    .reduce(new ReduceFunction&lt;Tuple2&lt;String, Long&gt;&gt; {
+      public Tuple2&lt;String, Long&gt; reduce(Tuple2&lt;String, Long&gt; v1, Tuple2&lt;String, Long&gt; v2) {
+        return new Tuple2&lt;&gt;(v1.f0, v1.f1 + v2.f1);
+      }
+    });
+</code></pre>
+
+<h4>AggregateFunction</h4>
+
+<p>AggregateFunction 有三种type：input type（IN），accumulator type（ACC），output type（OUT）。</p>
+
+<p>input type 是input stream 的元素的类型，AggregateFunction 有一个将输入元素与accumulator 相加的方法，还有一个创建初始accumulator 的方法，一个将两个accumulator 合并到一个accumulator 的方法，一个从accumulator 中提取output type 的方法。</p>
+
+<pre><code>/**
+ * The accumulator is used to keep a running sum and a count. The {@code getResult} method
+ * computes the average.
+ */
+private static class AverageAggregate
+    implements AggregateFunction&lt;Tuple2&lt;String, Long&gt;, Tuple2&lt;Long, Long&gt;, Double&gt; {
+  @Override
+  public Tuple2&lt;Long, Long&gt; createAccumulator() {
+    return new Tuple2&lt;&gt;(0L, 0L);
+  }
+
+  @Override
+  public Tuple2&lt;Long, Long&gt; add(Tuple2&lt;String, Long&gt; value, Tuple2&lt;Long, Long&gt; accumulator) {
+    return new Tuple2&lt;&gt;(accumulator.f0 + value.f1, accumulator.f1 + 1L);
+  }
+
+  @Override
+  public Double getResult(Tuple2&lt;Long, Long&gt; accumulator) {
+    return ((double) accumulator.f0) / accumulator.f1;
+  }
+
+  @Override
+  public Tuple2&lt;Long, Long&gt; merge(Tuple2&lt;Long, Long&gt; a, Tuple2&lt;Long, Long&gt; b) {
+    return new Tuple2&lt;&gt;(a.f0 + b.f0, a.f1 + b.f1);
+  }
+}
+
+DataStream&lt;Tuple2&lt;String, Long&gt;&gt; input = ...;
+
+input
+    .keyBy(&lt;key selector&gt;)
+    .window(&lt;window assigner&gt;)
+    .aggregate(new AverageAggregate());
+</code></pre>
+
+<h4>ProcessWindowFunction</h4>
+
+<p>ProcessWindowFunction 获得一个包含window 中所有元素和一个能够访问time 和state 的context 的iterable。这给ProcessWindowFunction 带来了更多的灵活性。</p>
+
+<p>带有ProcessWindowFunction 的window 执行效率不高，因为Flink 必须在调用该function 之前缓冲所以元素。</p>
+
+<p>如下是ProcessWindowFunction 的定义：</p>
+
+<pre><code>public abstract class ProcessWindowFunction&lt;IN, OUT, KEY, W extends Window&gt; implements Function {
+
+    /**
+     * Evaluates the window and outputs none or several elements.
+     *
+     * @param key The key for which this window is evaluated.
+     * @param context The context in which the window is being evaluated.
+     * @param elements The elements in the window being evaluated.
+     * @param out A collector for emitting elements.
+     *
+     * @throws Exception The function may throw exceptions to fail the program and trigger recovery.
+     */
+    public abstract void process(
+            KEY key,
+            Context context,
+            Iterable&lt;IN&gt; elements,
+            Collector&lt;OUT&gt; out) throws Exception;
+
+   	/**
+   	 * The context holding window metadata.
+   	 */
+   	public abstract class Context implements java.io.Serializable {
+   	    /**
+   	     * Returns the window that is being evaluated.
+   	     */
+   	    public abstract W window();
+
+   	    /** Returns the current processing time. */
+   	    public abstract long currentProcessingTime();
+
+   	    /** Returns the current event-time watermark. */
+   	    public abstract long currentWatermark();
+
+   	    /**
+   	     * State accessor for per-key and per-window state.
+   	     *
+   	     * &lt;p&gt;&lt;b&gt;NOTE:&lt;/b&gt;If you use per-window state you have to ensure that you clean it up
+   	     * by implementing {@link ProcessWindowFunction#clear(Context)}.
+   	     */
+   	    public abstract KeyedStateStore windowState();
+
+   	    /**
+   	     * State accessor for per-key global state.
+   	     */
+   	    public abstract KeyedStateStore globalState();
+   	}
+
+}
+</code></pre>
+
+<p>如下是ProcessWindowFunction 的使用示例：</p>
+
+<pre><code>DataStream&lt;Tuple2&lt;String, Long&gt;&gt; input = ...;
+
+input
+  .keyBy(t -&gt; t.f0)
+  .timeWindow(Time.minutes(5))
+  .process(new MyProcessWindowFunction());
+
+/* ... */
+
+public class MyProcessWindowFunction 
+    extends ProcessWindowFunction&lt;Tuple2&lt;String, Long&gt;, String, String, TimeWindow&gt; {
+
+  @Override
+  public void process(String key, Context context, Iterable&lt;Tuple2&lt;String, Long&gt;&gt; input, Collector&lt;String&gt; out) {
+    long count = 0;
+    for (Tuple2&lt;String, Long&gt; in: input) {
+      count++;
+    }
+    out.collect(&quot;Window: &quot; + context.window() + &quot;count: &quot; + count);
+  }
+}
+</code></pre>
+
+<h4>ProcessWindowFunction with Incremental Aggregation</h4>
+
+<p>ProcessWindowFunction 可以和ReduceFunction、AggregateFunction 或FoldFunction 结合来增量聚合到达window 的元素。当window 关闭时，ProcessWindowFunction 提供聚合的结果。这使得它在访问ProcessWindowFunction 的附加window meta 信息的同时增量计算window 的元素。</p>
+
+<p>也可以使用遗留的WindowFunction 来代替ProcessWindowFunction 来进行增量聚合运算。</p>
+
+<h5>Incremental Window Aggregation with AggregateFunction</h5>
+
+<p>如下示例展示了AggregateFunction 和ProcessWindowFunction 结合进行计算并同时发出key 和window。</p>
+
+<pre><code>DataStream&lt;Tuple2&lt;String, Long&gt;&gt; input = ...;
+
+input
+  .keyBy(&lt;key selector&gt;)
+  .timeWindow(&lt;duration&gt;)
+  .aggregate(new AverageAggregate(), new MyProcessWindowFunction());
+
+// Function definitions
+
+/**
+ * The accumulator is used to keep a running sum and a count. The {@code getResult} method
+ * computes the average.
+ */
+private static class AverageAggregate
+    implements AggregateFunction&lt;Tuple2&lt;String, Long&gt;, Tuple2&lt;Long, Long&gt;, Double&gt; {
+  @Override
+  public Tuple2&lt;Long, Long&gt; createAccumulator() {
+    return new Tuple2&lt;&gt;(0L, 0L);
+  }
+
+  @Override
+  public Tuple2&lt;Long, Long&gt; add(Tuple2&lt;String, Long&gt; value, Tuple2&lt;Long, Long&gt; accumulator) {
+    return new Tuple2&lt;&gt;(accumulator.f0 + value.f1, accumulator.f1 + 1L);
+  }
+
+  @Override
+  public Double getResult(Tuple2&lt;Long, Long&gt; accumulator) {
+    return ((double) accumulator.f0) / accumulator.f1;
+  }
+
+  @Override
+  public Tuple2&lt;Long, Long&gt; merge(Tuple2&lt;Long, Long&gt; a, Tuple2&lt;Long, Long&gt; b) {
+    return new Tuple2&lt;&gt;(a.f0 + b.f0, a.f1 + b.f1);
+  }
+}
+
+private static class MyProcessWindowFunction
+    extends ProcessWindowFunction&lt;Double, Tuple2&lt;String, Double&gt;, String, TimeWindow&gt; {
+
+  public void process(String key,
+                    Context context,
+                    Iterable&lt;Double&gt; averages,
+                    Collector&lt;Tuple2&lt;String, Double&gt;&gt; out) {
+      Double average = averages.iterator().next();
+      out.collect(new Tuple2&lt;&gt;(key, average));
+  }
+}
+</code></pre>
 
 </body>
 </html>

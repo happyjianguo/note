@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>数仓命名规范</title>
+	</head>
+<body>
+<h1>数仓命名规范</h1>
+
+<h2>原则</h2>
+
+<ul>
+	<li>表命名规则应该覆盖数据仓库中的所有表，按照表的情况使用规则公式</li>
+	<li>表名、字段名采用一个下划线分隔词根</li>
+	<li>优先使用词根中已有关键字（数仓标准配置中的词根管理），定期review新增命名的不合理性</li>
+</ul>
+
+<h2>命名规则</h2>
+
+<h3>ODS 层</h3>
+
+ 表名称 = 表所在模式/表所在数仓层级 + （系统前缀） + 源表名称 + (系统版本)
+<ul>
+	<li>表所在模式/表所在数仓层级：如果ODS 层表建在pg 中，则以pg 的schema 代替表所在数仓层级；如果ODS 层表不在pg 中，则以表所在数仓层级为前缀；</li>
+	<li>系统前缀：如果ODS 层表没有系统标识，则为该表加上系统标识；</li>
+	<li>系统版本：用来标识该表来源是3.0还是4.0</li>
+</ul>
+
+<h3>DIM 层</h3>
+
+ 表名称 = 表所在数仓层级 + 维度名称 + 更新频率
+<h3>DW/DM</h3>
+
+ 表名称 = 表所在数仓层级 + 主题 + 粒度 + 业务类型 + 存储方式 + 更新频率
+<ul>
+	<li>表所在数仓层级：按照数仓体系规范中的层级规范使用</li>
+	<li>主题：按照数仓体系规范中的主题划分规范使用，如交易（trans）</li>
+	<li>粒度：
+
+		<ul>
+			<li>jnl：明细</li>
+			<li>gather：汇总
+
+				<ul>
+					<li>gather<em>year：按年汇总
+						</em></li>
+					<li>gather<em>month：按月汇总
+						</em></li>
+					<li>gather<em>day：按天汇总
+						</em></li>
+				</ul></li>
+		</ul></li>
+	<li>业务类型：
+
+		<ul>
+			<li>yfk：预付款</li>
+		</ul></li>
+	<li>存储方式：
+
+		<ul>
+			<li>：当天（存储当天数据后缀可以为空）</li>
+			<li>bat：当前五天</li>
+			<li>his：历史</li>
+		</ul></li>
+	<li>更新频率：
+
+		<ul>
+			<li>stream：实时</li>
+			<li>hourly：每小时</li>
+			<li>daily：每天</li>
+			<li>monthly：每月</li>
+		</ul></li>
+</ul>
+
+</body>
+</html>
+

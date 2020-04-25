@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Java IO</title>
+	</head>
+<body>
+<h1>Java IO</h1>
+
+<p>Java 中的BIO、NIO 和AIO 可以理解为是Java 语言对操作系统的各种IO 模型的封装。</p>
+
+<hr />
+
+<h2>BIO（Blocking I/O）</h2>
+
+<p>同步阻塞I/O 模式，数据的读取写入必须阻塞在一个线程内等待其完成。</p>
+
+<h3>传统BIO</h3>
+
+<p>BIO 通信（一请求一应答）模型如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/BIO.png"/></figure>
+
+<p>采用<strong>BIO 通信模型</strong>的服务端，通常由<strong>一个独立的Acceptor 线程负责监听客户端的连接</strong>。</p>
+
+<p><strong>服务端一般通过在<code>while(true)</code>循环中调用<code>accept()</code>方法等待接受客户端的连接的方式监听请求，一旦接受到一个连接请求，就可以建立socket，在这个socket 上进行读写请求</strong>。此时不能再接收其他客户端连接请求，只能等待当前连接的客户端的操作完成。</p>
+
+<p>如果要让BIO 通信模型能够同时处理多个客户端请求，就必须使用多线程（主要因为<code>socket.accept()</code>、<code>socket.read()</code>、<code>socket.write()</code>涉及的三个主要函数都是同步阻塞的），也就是说它在接受到客户端连接请求之后为每个客户端创建一个新的线程进行链路处理，处理完成之后，通过输出流返回应答给客户端，然后销毁线程。这就是典型的<strong>一请求一应答通信模型</strong>。</p>
+
+<h3>伪异步IO</h3>
+
+<p>伪异步IO 模型图如下图所示：</p>
+
+<figure><img src="/Users/xerxes/note/java/src/%E4%BC%AA%E5%BC%82%E6%AD%A5IO.png"/></figure>
+
+<p>为了解决BIO 面临的一个链路需要一个线程处理的问题，对其线程模型进行了优化：后端通过一个线程池来处理多个客户端的请求接入，形成$客户端个数M：线程池最大线程数N$的比例关系，其中M 可以远远大于N。</p>
+
+<p><strong>当有新的客户端接入时，将客户端的socket 封装成一个Task（实现<code>java.lang.Runnable</code>接口）投递到后端的线程池中进行处理，线程池维护一个消息队列和N 个活跃线程，对消息队列中的任务进行处理</strong>。</p>
+
+<p>通过线程池可以灵活地调配线程资源，设置线程的最大值，防止由于海量并发接入导致线程耗尽。</p>
+
+<hr />
+
+<h2>NIO（Non-blocking I/O）</h2>
+
+<p>NIO 是一种<strong>同步非阻塞的I/O 模型</strong>，在Java1.4中引入，对应<code>java.nio</code>包，提供了Channel、Selector、Buffer 等抽象。</p>
+
+<p><strong>NIO 支持面向Buffer 的，基于Channel 的I/O 操作方法</strong>。NIO 提供了与传统BIO 模型中的<code>Socket</code>和<code>ServerSocket</code>相对应的<code>SocketChannel</code>和<code>ServerSocketChannel</code>两种不同的socket 通道实现，两种通道都支持阻塞和非阻塞两种模式。</p>
+
+<p>NIO 的I/O 行为依然是同步的。对于NIO 来说，业务线程是在I/O 操作准备好时，得到通知，接着由这个线程自行进行I/O 操作，I/O 操作本身是同步的。</p>
+
+<h3>NIO 和IO 的区别</h3>
+
+<ul>
+	<li><strong>NIO 以块的方式处理数据，IO 以字节流的形式处理数据</strong>；</li>
+	<li><strong>NIO 采用Channel 和Buffer 的形式处理数据</strong>；</li>
+	<li><strong>NIO 的Channel 是双向的，IO 的Stream 是单向的</strong>；</li>
+	<li><strong>NIO 的Buffer 还可以进行分片</strong>，可以建立只读缓冲区、直接缓冲区和间接缓冲区；</li>
+	<li>NIO 采用的是<strong>多路复用的IO 模型</strong>，普通IO 采用的是阻塞的IO 模型</li>
+</ul>
+
+<h3>NIO 核心组件</h3>
+
+<h4>Buffer</h4>
+
+<p>NIO 是面向Buffer 的。</p>
+
+<p>Buffer 是一个对象，它包含一些要写入或者要读出的数据。</p>
+
+<p>在NIO 类库中加入Buffer 对象，体现了新库与原I/O 的一个重要区别：在<strong>面向Stream 的原I/O 中将数据直接写入到或读到Stream 对象中</strong>，虽然Stream 中也有Buffer 开头的扩展类，但只是Stream 的包装类，还是从Stream 读到Buffer 区，而<strong>NIO 是直接读取到Buffer 中进行操作</strong>。</p>
+
+<p>最常用的Buffer 区是<code>ByteBuffer</code>，其提供了一组功能用于操作byte 数组。除了<code>ByteBuffer</code>外，每一种Java 基本类型（除了Boolean 类型）都对应有一种Buffer 区。</p>
+
+<h4>Channel</h4>
+
+<p>NIO 通过Channel 进行读写。Channel 是对原IO 包中的Stream 的模拟。到任何目的地的所有数据都必须要通过Channel 对象。</p>
+
+<p>Channel 是双向的，可读可写，而Stream 是单向的。</p>
+
+<p>无论读写，Channel 都只能和Buffer 交互，因为Buffer，Channel 可以异步地读写。</p>
+
+<h4>Selector</h4>
+
+<p><strong>Selector 用于使用单个线程独立多个Channel</strong>。因此，它需要较少的线程来处理这些Channel。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/NIO%5C%20Selector.png"/></figure>
+
+<h3>NIO 读写方式</h3>
+
+<p>通常来说NIO 中的所有IO 都是从Channel 开始的：</p>
+
+<ul>
+	<li>从Channel 读取数据：创建一个Buffer，然后请求Channel 读取数据；</li>
+	<li>向Channel 写入数据：创建一个Buffer，填充数据，并要求Channel 写入数据</li>
+</ul>
+
+<hr />
+
+<h2>AIO（Asynchronous I/O）</h2>
+
+<p>在Java1.7中引入了NIO 的改进版AIO，它是<strong>异步非阻塞的I/O 模型</strong>。</p>
+
+<p><strong>异步I/O 是基于事件和回调机制实现的</strong>，也就是应用操作之后会直接返回，不会阻塞，当后台处理完成后，操作系统会通知相应的线程进行后续的操作。</p>
+
+</body>
+</html>
+

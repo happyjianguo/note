@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Maven</title>
+	</head>
+<body>
+<h1>Maven</h1>
+
+<p>Maven是一个Java项目管理构建自动化综合工具。主要功能：</p>
+
+<ul>
+	<li>依赖管理：通过jar包的属性确定唯一的jar包，在指定的pom.xml中写入依赖属性，就会自动下载并管理jar包；</li>
+	<li>项目构建：内置很多的插件和生命周期，支持多种任务如校验、编译、测试、打包、部署、发布等；</li>
+	<li>项目的知识管理：管理项目相关的其他内容，比如开发者信息、版本等</li>
+</ul>
+
+<hr />
+
+<h2>基本概念</h2>
+
+<h3>POM（project object model）项目对象模型</h3>
+
+<p>Maven项目对象模型，可以通过一小段描述信息来管理项目的构建，报告和文档。</p>
+
+<p>POM和Java代码实现了解耦，当需要升级版本时，只需要修改POM，而不需要修改Java代码。</p>
+
+<figure><img src="/Users/xerxes/note/java/src/POM%E4%BB%8B%E7%BB%8D.jpg"/></figure>
+
+<h3>坐标</h3>
+
+<p>Maven项目通过三个元素唯一标识一个项目：</p>
+
+<ul>
+	<li>groupId：项目所在组，一般是组织或公司；</li>
+	<li>artifactId：当前项目在组中的唯一ID；</li>
+	<li>version：项目的版本（SNAPSHOT指快照，表示此项目还在开发中）</li>
+</ul>
+
+<h3>依赖范围</h3>
+
+<p>Compile：编译、测试、运行都有效，默认的选择；</p>
+
+<p>Test：测试有效；</p>
+
+<p>Provided：编译、测试有效。例如 servlet ，运行时容器会提供实现；</p>
+
+<p>Runtime：运行、测试有效。例如 jdbc，编译时只需相应的接口，测试和运行时才需要具体的实现；</p>
+
+<p>System：编译、测试有效。使用此范围的依赖必须通过systemPath元素显式的指定依赖文件，因而此类依赖是不通过Maven仓库解析的，一般适合于本机测试环境下，依赖本地起的服务</p>
+
+<h3>profile</h3>
+
+<p>通常线上线下的配置是不一样的，开发一般会把不同环境的配置放到不同文件中。</p>
+
+<p>Profile可以帮助实现：在不修改代码的情况下，实现不同的环境读取不同的配置。</p>
+
+<p>profile的主要作用：</p>
+
+<ul>
+	<li>区分运行环境</li>
+	<li>区分JDK版本</li>
+	<li>区分操作系统</li>
+	<li>区分文件是否存在</li>
+</ul>
+
+<h4>如何配置profile</h4>
+
+<ul>
+	<li>pom.xml
+
+		<pre><code>&lt;profiles&gt;
+		        &lt;profile&gt;
+		            &lt;!-- do configuration --&gt;
+		        &lt;/profile&gt;
+		&lt;/profile&gt;
+		</code></pre></li>
+	<li>m2/settings.xml</li>
+	<li>conf/settings.xml</li>
+</ul>
+
+<hr />
+
+<h2>中央仓库的配置</h2>
+
+<p>当构建一个Maven项目时，首先检查pom.xml文件以确定依赖包的下载位置，执行顺序如下：</p>
+
+<ul>
+	<li>从本地资源库中查找并获得依赖包；</li>
+	<li>如果本地资源库没有，从Maven默认中央仓库中查找并获得依赖包；</li>
+	<li>如果中央仓库没有，如果在pom.xml中定义了自定义的远程仓库，就在远程仓库中查找并获得依赖包</li>
+</ul>
+
+<p>中央仓库配置示例：</p>
+
+<pre><code>&lt;mirror&gt;
+      &lt;id&gt;mirrorId&lt;/id&gt;
+      &lt;mirrorOf&gt;repositoryId&lt;/mirrorOf&gt;
+      &lt;name&gt;Human Readable Name for this Mirror.&lt;/name&gt;
+      &lt;url&gt;http://my.repository.com/repo/path&lt;/url&gt;
+&lt;/mirror&gt;
+</code></pre>
+
+<hr />
+
+<h2>Maven 构建生命周期</h2>
+
+<p>Maven 构建生命周期就是将一个整体任务划分为一个个阶段，类似于流程图，按顺序依次执行，也可以指定该任务执行到中间某个阶段结束。</p>
+
+<p>Maven 的内部有三个构建生命周期，分别是clean、default、site。其中default 生命周期的核心阶段如下：</p>
+
+<ul>
+	<li>validate</li>
+	<li>compile</li>
+	<li>test</li>
+	<li>package</li>
+	<li>verify</li>
+	<li>install</li>
+	<li>deploy</li>
+</ul>
+
+<h3>如何使用构建生命周期来完成构建工作</h3>
+
+<h4>可以指定某个生命周期的阶段</h4>
+
+<p>执行<code>mvn install</code>，将完成validate, compile, test, package, verify, install 阶段，并将package 生成的包发布到本地仓库。</p>
+
+<h4>可以指定多个不同构建生命周期的阶段</h4>
+
+<p>执行<code>mvn clean deploy</code>，首先完成clean lifecycle，将以前构建的文件清理，然后再执行default lifecycle 的validate, compile, test, package, verify, install, deploy 阶段，将package 阶段创建的包发布到远程仓库中。</p>
+
+<h3>阶段与插件的关系</h3>
+
+<p>Maven 将构建过程定义为default lifecycle，并将default lifecycle 划分为一个个阶段phase，这一系列phase 仅仅是规定执行顺序，至于每个阶段做什么，谁来做，则由插件plugin 决定。</p>
+
+<p>Maven 对工程的所有操作都由插件完成，一个插件可以支持多种功能，称之为目标goal。例如compiler 插件有两个目标：compile 和testCompile，分别实现编译源代码和编译测试代码。</p>
+
+<p>通过将插件的goal 和build lifecycle phase 绑定到一起，当要执行某个phase 时，就调用插件来完成绑定的目标。</p>
+
+</body>
+</html>
+

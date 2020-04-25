@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>SQL</title>
+	</head>
+<body>
+<h1>SQL</h1>
+
+<hr />
+
+<h2>Query</h2>
+
+<p>SQL query 由<code>TableEnvironment.sqlQuery()</code>指定。该方法返回一个Table 作为SQL query 的结果。</p>
+
+<p>Table 可以用作子SQL 和Table API 查询，也可以转换为DataSet 或DataStream，或者写入一个TableSink。</p>
+
+<p>为了在SQL query 中访问一个Table，该Table 必须在<code>TableEnvironment</code>中注册，可以从TableSource、Table、CREATE TABLE statement、DataStream 或者DataSet 注册。另外用户也可以在<code>TableEnvironment</code>中注册外部catelogs 来指定数据源的位置。</p>
+
+<p>用CREATE TABLE statement 注册的Table 在table source 和table sink 中都可以用。</p>
+
+<p>为了方便，<code>Table.toString()</code>自动的以一个唯一的名字注册在<code>TableEnvironment</code>中，并返回这个名字。因此，Table object 可以直接写在SQL query 中。</p>
+
+<h3>指定一个Query</h3>
+
+<pre><code>StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env);
+
+// ingest a DataStream from an external source
+DataStream&lt;Tuple3&lt;Long, String, Integer&gt;&gt; ds = env.addSource(...);
+
+// SQL query with an inlined (unregistered) table
+Table table = tableEnv.fromDataStream(ds, &quot;user, product, amount&quot;);
+Table result = tableEnv.sqlQuery(
+  &quot;SELECT SUM(amount) FROM &quot; + table + &quot; WHERE product LIKE &#39;%Rubber%&#39;&quot;);
+
+// SQL query with a registered table
+// register the DataStream as table &quot;Orders&quot;
+tableEnv.registerDataStream(&quot;Orders&quot;, ds, &quot;user, product, amount&quot;);
+// run a SQL query on the Table and retrieve the result as a new Table
+Table result2 = tableEnv.sqlQuery(
+  &quot;SELECT product, amount FROM Orders WHERE product LIKE &#39;%Rubber%&#39;&quot;);
+
+// SQL update with a registered table
+// create and register a TableSink
+TableSink csvSink = new CsvTableSink(&quot;/path/to/file&quot;, ...);
+String[] fieldNames = {&quot;product&quot;, &quot;amount&quot;};
+TypeInformation[] fieldTypes = {Types.STRING, Types.INT};
+tableEnv.registerTableSink(&quot;RubberOrders&quot;, fieldNames, fieldTypes, csvSink);
+// run a SQL update query on the Table and emit the result to the TableSink
+tableEnv.sqlUpdate(
+  &quot;INSERT INTO RubberOrders SELECT product, amount FROM Orders WHERE product LIKE &#39;%Rubber%&#39;&quot;);
+</code></pre>
+
+<h3>支持的语法</h3>
+
+<p>Flink 使用Apache Calcite 解析SQL，支持标准的ANSI SQL，不支持DDL。</p>
+
+<p>如下BNF-grammar 描述了流批查询支持的SQL 特性的超集。</p>
+
+<hr />
+
+<h2>DDL</h2>
+
+<p>DDL 由<code>TableEnvironment.sqlUpdate()</code>指定。该方法如果建表成功则什么都不返回。</p>
+
+<p>Table 可以通过CREATE TABLE statement 注册在catelog 中，之后可以在SQL query 中引用。</p>
+
+<h3>指定一个DDL</h3>
+
+<pre><code>StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env);
+
+// SQL query with a registered table
+// register a table named &quot;Orders&quot;
+tableEnv.sqlUpdate(&quot;CREATE TABLE Orders (`user` BIGINT, product VARCHAR, amount INT) WITH (...)&quot;);
+// run a SQL query on the Table and retrieve the result as a new Table
+Table result = tableEnv.sqlQuery(
+  &quot;SELECT product, amount FROM Orders WHERE product LIKE &#39;%Rubber%&#39;&quot;);
+
+// SQL update with a registered table
+// register a TableSink
+tableEnv.sqlUpdate(&quot;CREATE TABLE RubberOrders(product VARCHAR, amount INT) WITH (...)&quot;);
+// run a SQL update query on the Table and emit the result to the TableSink
+tableEnv.sqlUpdate(
+  &quot;INSERT INTO RubberOrders SELECT product, amount FROM Orders WHERE product LIKE &#39;%Rubber%&#39;&quot;);
+</code></pre>
+
+<h3>创建Table</h3>
+
+<pre><code>CREATE TABLE [catalog_name.][db_name.]table_name
+  [(col_name1 col_type1 [COMMENT col_comment1], ...)]
+  [COMMENT table_comment]
+  [PARTITIONED BY (col_name1, col_name2, ...)]
+  WITH (key1=val1, key2=val2, ...)
+</code></pre>
+
+<h4>PARTITIONED BY</h4>
+
+<p>将Table 按照指定的字段分区。如果Table 用作filesystem sink，会为每个分区创建一个directory。</p>
+
+<h4>WITH OPTIONS</h4>
+
+<p>用于寻找并创建底层的connector，以此创建table source/sink。</p>
+
+<h3>Drop Table</h3>
+
+<pre><code>DROP TABLE [IF EXISTS] [catalog_name.][db_name.]table_name</code></pre>
+
+</body>
+</html>
+

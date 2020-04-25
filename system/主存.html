@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>主存</title>
+	</head>
+<body>
+<h1>主存</h1>
+
+<p>从物理上来说，主存是由一组<strong>动态随机存取存储器（DRAM）</strong>芯片组成的。</p>
+
+<p>从逻辑上来说，存储器是一个<strong>线性的字节数组，每个字节都有其唯一的地址（即数组索引）</strong>，这些地址是从0开始的。</p>
+
+<p>一般来说，组成程序的每条机器指令都由不同数量的字节构成。与程序变量相对应的数据项的大小是根据类型变化的。</p>
+
+<hr />
+
+<h2>内存的物理结构</h2>
+
+<p>内存主要分为三种存储器：</p>
+
+<ul>
+	<li>随机存储器（RAM）：内存中最重要的一种，表示既可以从中读取数据，也可以写入数据；</li>
+	<li>只读存储器（ROM）：一般只能用于读取数据，不能写入数据，当机器停电时，这些数据不会丢失；</li>
+	<li>高速缓存（Cache）：Cache 也是经常见到的，它分为一级缓存（L1 Cache）、二级缓存（L2 Cache）、三级缓存（L3 Cache）这些数据。它位于内存和CPU 之间，是一个读写速度比内存更快的存储器。当CPU 向内存写入数据时，这些数据也会被写入高速缓存中。当CPU 需要读取数据时，会直接从高速缓存中读取，读不到才会再去内存中读取</li>
+</ul>
+
+<p>内存IC 是一个完整的结构，它内部有电源、地址信号、数据信号、控制信号和用于寻址的IC 引脚来进行数据的读写。如下是一个虚拟的IC 引脚示意图：</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E5%86%85%E5%AD%98IC%E5%BC%95%E8%84%9A%E7%A4%BA%E6%84%8F%E5%9B%BE.jpg"/></figure>
+
+<p>D0 - D7 表示的是数据信号，也就是说，一次可以输入输出8 bit = 1 byte 的数据。</p>
+
+<p>A0 - A9 是地址信号共十个，表示可以指定 00000 00000 - 11111 11111 共2的10次方 = 1024个地址。每个地址都会存放1 byte 的数据，因此我们可以得出内存IC 的容量就是1 KB。</p>
+
+<hr />
+
+<h2>内存的读写过程</h2>
+
+<figure><img src="/Users/xerxes/note/system/src/%E4%BB%8E%E5%86%85%E5%AD%98IC%E8%AF%BB%E5%8F%96%E5%92%8C%E5%86%99%E5%85%A5%E6%95%B0%E6%8D%AE.jpg"/></figure>
+
+<p>假设要向内存IC 中写入1 byte 的数据，过程如下：</p>
+
+<ul>
+	<li>首先给VCC 接通+5V 电源，给GND 接通0V 电源，使用A0 - A9 来指定数据的存储场所，然后再把数据的值输入给D0 - D7 的数据信号，并把WR（write）的值置为1，执行完这些操作后，即可向内存IC 写入数据；</li>
+	<li>读出数据时，只需要通过A0 - A9 的地址信号指定数据的存储场所，然后再将RD 的值置为1即可；</li>
+</ul>
+
+<hr />
+
+<h2>内存和硬盘的关系</h2>
+
+<p>磁盘中存储的程序必须加载到内存中才能运行，在磁盘中保存的程序是无法直接运行的，这是因为负责解析和运行程序内容的CPU 是需要通过程序计数器来指定内存地址从而读出程序指令的。</p>
+
+<figure><img src="/Users/xerxes/note/system/src/%E7%A8%8B%E5%BA%8F%E8%BF%90%E8%A1%8C%E7%A4%BA%E6%84%8F%E5%9B%BE.jpg"/></figure>
+
+</body>
+</html>
+

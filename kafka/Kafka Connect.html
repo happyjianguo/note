@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>Kafka Connect</title>
+	</head>
+<body>
+<h1>Kafka Connect</h1>
+
+<p>Kafka Connect 是一个高伸缩性、高可靠性的数据集成工具，用于在Kafka 和其他系统间进行数据搬运以及执行ETL 操作，如将文件系统中某些文件的内容全部灌入Kafka topic 中或者是把Kafka topic 中的消息导出到外部的数据库系统。</p>
+
+<p>Kafka Connect 目前主要的设计特点有：</p>
+
+<ul>
+	<li>通用性：依托底层的Kafka 核心系统封装了connector 接口，方便开发、部署和管理；</li>
+	<li>兼具分布式和单体式；</li>
+	<li>REST 接口：提供常见的REST API 方便管理和操作，只适用于分布式模式；</li>
+	<li>自动位移管理：connector 自动管理位移，降低开发成本；</li>
+	<li>集成性：方便与流/批处理系统对接</li>
+</ul>
+
+<hr />
+
+<h2>核心概念</h2>
+
+<h3>Connectors</h3>
+
+<p>为了在Kafka 和其他系统之间复制数据，用户要为他们想要pull 或者push 数据的系统实例化一个Kafka Connectors。</p>
+
+<figure><img src="/Users/xerxes/note/kafka/src/kafka%5C%20connect.png"/></figure>
+
+<p>如上图所示，Connectors 分为两种：</p>
+
+<ul>
+	<li>SourceConnectors</li>
+	<li>SinkConnectors</li>
+</ul>
+
+<p><strong>Connector 类的实现本身不执行数据复制，它们的配置描述了要复制的数据的集合，并且Connector 负责将job 分成Tasks 的集合，Tasks 会被分发到Kafka Connect workers</strong>。</p>
+
+<h3>Tasks</h3>
+
+<p>Tasks 同样分为两种：</p>
+
+<ul>
+	<li>SourceTask</li>
+	<li>SinkTask</li>
+</ul>
+
+<p><strong>在分配要复制的数据时，每一个Task 必须从Kafka 中复制它的数据子集或复制到Kafka 中去</strong>。</p>
+
+<p>Connector 要复制的数据必须表示为<strong>partitioned stream</strong>，类似于Kafka topic 的model，<strong>每一个partition 是一个带有offsets 的records 的有序序列，每一个task 被分配一个partitions 的子集来处理</strong>。</p>
+
+<p>有时这种映射关系非常清晰：一个log file 的集合中的每一个文件是一个partition，每一个文件的一行是一条record，offsets 是文件中的位置。</p>
+
+<p>在别的情况中可能不太好映射到这个模型：一个JDBC connector 可以将每一个table 映射到一个partition，但是offset 就不太清晰了。一个可能的映射是用timestamp column 来生成查询，以增量返回新数据，最后查询的timestamp 就是offset。</p>
+
+<figure><img src="/Users/xerxes/note/kafka/src/connector%E4%BE%8B%E5%AD%90.jpg"/></figure>
+
+<p>如上图是一个source connector 的例子，该connector 创建了两个tasks，从input partitions 中复制数据并将records 写到kafka 中。</p>
+
+<h3>Partitions and Records</h3>
+
+<p><strong>每一个partitions 的records 都是key-value 形式的</strong>，key 和value 都可以有复杂结构，由<code>org.apache.kafka.connect.data</code>包中的数据结构表示，支持许多基本数据类型、数组、结构和嵌套数据结构。对于许多类型来说，标准Java 类型如<code>java.lang.Integer</code>、<code>java.lang.Map</code>和<code>java.lang.Collection</code>可以直接使用。</p>
+
+<figure><img src="/Users/xerxes/note/kafka/src/partitioned%5C%20stream.jpg"/></figure>
+
+<p>如上图是一个partitioned stream 的例子，connectors 必须将source 和sink 映射为该数据模型。<strong>每一个record 包含keys，values（带有schemas），一个partition ID 以及offsets</strong>。</p>
+
+<p>为了追踪partitions 中的records 的结构和兼容性，每个record 中可以包含schemas。因为schemas 同时是基于数据源动态生成的，所以包含一个SchemaBuilder 类会使构造schemas 更容易。</p>
+
+<p>Record 中的partition ID 和offsets 会被framework 用来周期性提交已处理数据的offsets。对于失败的事件，会在最后一次提交的offset 处重新开始处理。</p>
+
+<h3>动态Connectors</h3>
+
+<p>不是所有的connectors 都有一个partitions 的静态集合，因此<strong>connector 的实现也负责监视外部系统可能需要重新配置的任何变动。当它发现需要重新配置的变动时，会通知framework，framework 更新相应的Tasks</strong>。</p>
+
+<p>例如，在JDBCSourceConnector 中，Connector 可能分配一个tables 的集合给每一个Task。当创建了一个新的table 时，connector 会发现该table并更新configuration 将它分配给一个Task。</p>
+
+</body>
+</html>
+

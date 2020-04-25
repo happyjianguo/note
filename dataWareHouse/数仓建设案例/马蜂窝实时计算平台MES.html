@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>马蜂窝实时计算平台MES</title>
+	</head>
+<body>
+<h1>马蜂窝实时计算平台MES</h1>
+
+<p><a href="https://mp.weixin.qq.com/s/JMxTaMd8pJOALH78txJAfQ">[https://mp.weixin.qq.com/s/JMxTaMd8pJOALH78txJAfQ] </a></p>
+
+<hr />
+
+<h2>整体架构设计</h2>
+
+<p>对照Lambda架构，选用Kafka作为消息中间件，批处理层选择Hive、Presto，实时处理层选择Spark、Flink等。</p>
+
+<figure><img src="/Users/xerxes/note/dataWareHouse/src/%E9%A9%AC%E8%9C%82%E7%AA%9DMES%E6%9E%B6%E6%9E%84.jpg"/></figure>
+
+<p>数据从Kafka出来后走两条线：</p>
+
+<ul>
+	<li>Spark Streaming，支持秒级别的实时数据，计算结果存入Redis。第二天凌晨，Redis中前一天的所有数据Batch到HBase中；</li>
+	<li>Flink+Druid，处理分钟级和小时级的数据</li>
+</ul>
+
+<p>入库后往上提供一层Restful API/Thrift API封装，供MES页面或其他业务通过接口的方式获取数据。</p>
+
+<p>如果实时数据出了问题，通过HDFS中的离线主表进行重算，也是两条路径：</p>
+
+<ul>
+	<li>为用户服务的MES重算系统：用户自主化选取重算规则，提交重算任务到PrestoSQL集群，计算结果最终落地到HBase，重算后MES的历史数据就会和离线数据算出来的数据保持一致；</li>
+	<li>Spark全量重算：由数据平台开发人员内部使用，解决的是基于所有事件组、所有规则的全天数据重算。Spark读取配置规则，重算所有前一天的数据后入库到HBase，保持实时数据和离线数据的一致性</li>
+</ul>
+
+<p>监控系统使用Grafana，开放了通用接口给Python、Java等来上报相关信息，只要按照接口上报想要关注的指标并进行简单配置，就可以查询结果，比如MES的延迟时间、一些Restful接口的调用量等，如果出现不正常就告警。</p>
+
+<h3>实时计算引擎</h3>
+
+<h4>技术选型</h4>
+
+<p>组件技术选型的时候在满足自己业务现状的同时，还需要从几个方面考虑：</p>
+
+<ul>
+	<li>开源组件是否能覆盖需求</li>
+	<li>开源组件的扩展性和二次开发的难度</li>
+	<li>开源组件API是否稳定</li>
+	<li>开源组件是否有应用于生产环境的案例，比如多少公司应用于生产环境</li>
+	<li>开源组件社区是否活跃</li>
+	<li>开源组件License限定问题</li>
+	<li>开源组件之间的耦合问题</li>
+</ul>
+
+<h5>Storm</h5>
+
+<p>第一代流式计算引擎，实现了一个数据流（Data Flow）的模型。可以把它想象成一个发射点，一条一条产生数据，形成的数据流分布式地在集群上按照Bolt的计算逻辑进行转换，完成计算、过滤等操作，在下游实现聚合。</p>
+
+<p>优点是实时性好，可以达到毫秒级。但是吞吐量欠佳，并且只能为消息提供‘至少一次’的处理机制，这意味着可以保证每条消息都能被处理，但也可能发生重复。</p>
+
+<h5>Spark Streaming</h5>
+
+<p>在处理前按时间间隔预先将数据切分成一段一段，进行‘微批次’处理作业。</p>
+
+<p>吞吐性高，实时性虽然不如Storm，但也能达到秒级。在流式语义方面，由于Spark Streaming容错机制基于RDD，依靠CheckPoint，出错之后从该位置重新计算，不会导致重复计算。也可以自己来管理offset，保证Exactly Once的处理。</p>
+
+<h5>Flink</h5>
+
+<p>新一代流式计算引擎，原生的流处理系统，把所有的数据都看成流，认为批处理是流处理中的一种特殊情况。数据基于Flink Stream Source流入，中间经过Operator，从Sink流出。</p>
+
+<p>为了解决容错问题，Flink运用了<strong>分布式快照</strong>的设计与可部分重发的数据源实现容错。用户可以自定义对整个Job进行快照的时间间隔。当任务失败时，Flink将整个Job恢复到最近一次快照，并从数据源重发快照之后的数据。</p>
+
+<p>Flink同时保证了实时性和吞吐量，流式语义也能够保证Exactly Once。</p>
+
+</body>
+</html>
+

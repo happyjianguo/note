@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta charset="utf-8" />
+		<link rel="stylesheet" type="text/css" href="css/style.css" />
+		<title>小米mysql实时同步到数据仓库的架构与实践</title>
+	</head>
+<body>
+<h1>小米mysql实时同步到数据仓库的架构与实践</h1>
+
+<hr />
+
+<h2>binlog讲解</h2>
+
+<blockquote>
+<p>mysql主从复制时使用的binlog日志，记录了所有的DDL和DML语句（除了数据查询语句select、show等），以事件形式记录，还包含语句所执行的消耗时间。</p>
+</blockquote>
+
+<p><strong>主从复制原理</strong>：</p>
+
+<ol>
+	<li>master在每次准备提交事务完成数据更新前，将改变记录到二进制日志中</li>
+	<li>slave发起连接，连接到master，请求获取指定位置的binlog</li>
+	<li>master创建dump线程，推送binlog到slave</li>
+	<li>slave启动一个I/O线程来读取主库上binlog中的事件，并记录到slave自己的中继日志（relay log）中</li>
+	<li>slave还会启动一个sql线程，该线程从relay log中读取事件并在备库中执行，完成数据同步</li>
+	<li>slave记录自己的binlog</li>
+</ol>
+
+<hr />
+
+<h2>LCSBinlog</h2>
+
+<h3>架构</h3>
+
+<h4>角色</h4>
+
+<p>Master：主要负责作业的调度</p>
+
+<p>Worker：主要完成具体的数据同步任务</p>
+
+<h4>Worker上运行的作业</h4>
+
+<ol>
+	<li>BinlogSyncJob：每一个mysql库都会对应这样一个job，将binlog日志完整地写入到服务创建的Topic中</li>
+	<li>MysqlSyncJob：同步历史数据，消费binglog数据，过滤特定库表数据实时同步至用户配置的topic中</li>
+</ol>
+
+<h3>同步服务状态</h3>
+
+<p>服务整体依赖于Zookeeper来同步服务状态，记录作业调度信息和标记作业运行状态，在kudu表中记录作业同步进度</p>
+
+<figure><img src="/Users/xerxes/note/dataWareHouse/src/LCSBinlog%E6%9C%8D%E5%8A%A1%E7%8A%B6%E6%80%81%E5%90%8C%E6%AD%A5%E6%8E%A7%E5%88%B6.jpg"/></figure>
+
+<p><strong>控制流程</strong>：</p>
+
+<ol>
+	<li>Worker节点通过Zookeeper上注册告知自己可以被调度</li>
+	<li>通过在Zookeeper上抢占EPHEMERAL临时节点实现Master的HA</li>
+	<li>用户在web上注册BinlogSource同步任务</li>
+	<li>Master周期性从配置服务读取Binlog同步作业配置</li>
+	<li>Master节点根据Zookeeper伤的调度信息启动新分配任务，停止配置失效任务；作业启动后完成数据实时同步并周期性将同步进度记录到kudu中</li>
+	<li>服务上报监控信息到Falcon平台，作业异常退出发送报警邮件</li>
+</ol>
+
+<h3>如何保证数据正确性</h3>
+
+<h4>顺序性</h4>
+
+<p>用户配置的每一个BinlogSource都会绑定一个topic，在进行消费的时候需要保证一条mysql记录操作的顺序性，消息队列Talos无法保证全局消息有序，只能保证partition内部有序。</p>
+
+<p>对于配置分库分表或者多库同步任务的BinlogSource，服务根据库表信息进行hash，将数据写入相应的partition，保证同一张表的数据有序。</p>
+
+<h3>一致性</h3>
+
+<p>如何保证在作业异常退出后，作业重新启动能够完整地将mysql中的数据同步到下游系统，主要依赖三点：</p>
+
+<ul>
+	<li>服务记录作业同步的offset，重启后从上次commit的offset继续消费</li>
+	<li>Binlog数据的顺序性保证了即便数据被重复消费，也能对同一条记录的操作以相同的顺序执行</li>
+	<li>下游存储系统基于主键的操作能够保证binlog重复回放后数据最终一致性</li>
+</ul>
+
+</body>
+</html>
+
